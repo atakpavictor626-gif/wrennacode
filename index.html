@@ -1,0 +1,1240 @@
+/*
+ * WRENNA — Naturalist-Notebook × Terminal Aesthetic
+ * Visual, Motion & Responsive Design System
+ * 
+ * CUSTOM BREAKPOINTS (content-driven, not device-driven):
+ * ─────────────────────────────────────────────
+ * 40rem  (640px)  — Editor + preview can share a row, each ≥18rem usable width.
+ *                   Below this: stacked single-column with toggle navigation.
+ * 56rem  (896px)  — File sidebar (15rem) + two panels (≈20rem each) fit
+ *                   without illegible compression. Sidebar becomes persistent.
+ * 72rem  (1152px) — All three panels breathe. Preview iframe gets full
+ *                   comfortable width. This is the "designed-for" state.
+ *
+ * NEW CLASSES INTRODUCED (JS hooks needed):
+ * ─────────────────────────────────────────────
+ * .sidebar-open         → File sidebar open animation
+ * .sidebar-closed       → File sidebar close animation
+ * .modal-visible        → Modal entrance (gh-modal, gate)
+ * .modal-hidden         → Modal exit
+ * .toast-enter          → Toast entrance animation
+ * .toast-exit           → Toast exit animation
+ * .banner-collapsed     → Idle banner collapsed state
+ * .banner-expanded      → Idle banner expanded state
+ * .drag-active          → Drag-and-drop zone active state
+ * .file-item-reveal     → Individual file item staggered reveal
+ * .preview-mobile       → Viewport in mobile mode
+ * .preview-desktop      → Viewport in desktop mode
+ * .copied               → Share button "copied" confirmation state
+ * .loading              → Generic loading state for spinners
+ * .log-active           → Log panel active/loading state
+ * .pane-editor          → Editor pane is active/visible
+ * .pane-preview         → Preview pane is active/visible
+ */
+
+/* ═══════════════════════════════════════════════
+   FOUNDATIONS
+   ═══════════════════════════════════════════════ */
+
+:root {
+  --bg-deep: #1B1712;
+  --panel: #241F18;
+  --panel-raised: #2C261D;
+  --hairline: #3A3226;
+  --cream: #F0E9DC;
+  --cream-dim: #B8AD98;
+  --wren: #B8703C;
+  --wren-bright: #D08A52;
+  --moss: #7A8C5C;
+  --moss-bright: #93A874;
+  --gold: #D9A441;
+  --danger: #B85C4C;
+
+  /* Extended tokens */
+  --shadow-sm: 0 0.0625rem 0.125rem rgba(27, 23, 18, 0.4);
+  --shadow-md: 0 0.25rem 0.75rem rgba(27, 23, 18, 0.6);
+  --shadow-lg: 0 0.5rem 1.5rem rgba(27, 23, 18, 0.8);
+  --shadow-glow-wren: 0 0 1.25rem rgba(184, 112, 60, 0.15);
+  --shadow-glow-moss: 0 0 1.25rem rgba(122, 140, 92, 0.15);
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  --spring-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --spring-soft: cubic-bezier(0.22, 1.2, 0.36, 1);
+  --font-display: 'Fraunces', serif;
+  --font-body: 'IBM Plex Sans', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+
+  /* Responsive breakpoints as custom properties for clarity */
+  --bp-split: 40rem;
+  --bp-sidebar: 56rem;
+  --bp-comfortable: 72rem;
+
+  /* Sidebar width */
+  --sidebar-w: 15rem;
+}
+
+/* ═══════════════════════════════════════════════
+   MOBILE-FIRST BASE LAYOUT
+   Single column: editor on top, preview below,
+   sidebar as overlay, toolbar condensed.
+   ═══════════════════════════════════════════════ */
+
+#root {
+  background: var(--bg-deep);
+  color: var(--cream);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════
+   FILE SIDEBAR — Mobile: overlay
+   ═══════════════════════════════════════════════ */
+
+#file-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--sidebar-w);
+  max-width: 85vw;
+  background: var(--panel);
+  border-right: 1px solid var(--hairline);
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
+  transform: translateX(-100%);
+  opacity: 0;
+  transition:
+    transform var(--transition-slow) var(--spring-soft),
+    opacity var(--transition-base);
+  box-shadow: var(--shadow-lg);
+}
+
+#file-sidebar.sidebar-open {
+  transform: translateX(0);
+  opacity: 1;
+  animation: sidebarLand 0.5s var(--spring-bounce) forwards;
+}
+
+#file-sidebar.sidebar-closed {
+  transform: translateX(-100%);
+  opacity: 0;
+}
+
+/* Desktop: sidebar becomes part of grid flow */
+@media (min-width: var(--bp-sidebar)) {
+  #file-sidebar {
+    position: relative;
+    top: auto;
+    left: auto;
+    bottom: auto;
+    max-width: none;
+    flex-shrink: 0;
+    box-shadow: none;
+    transform: none;
+    opacity: 1;
+  }
+
+  #file-sidebar.sidebar-closed {
+    transform: translateX(-100%);
+    opacity: 0.8;
+  }
+}
+
+/* ── File Filter ── */
+
+#file-filter {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--panel-raised);
+  container-type: inline-size;
+  container-name: file-filter;
+}
+
+#file-filter input {
+  width: 100%;
+  background: var(--bg-deep);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  color: var(--cream);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  transition: border-color var(--transition-fast);
+}
+
+#file-filter input:focus {
+  outline: none;
+  border-color: var(--wren);
+  box-shadow: var(--shadow-glow-wren);
+}
+
+/* ── File List ── */
+
+#file-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+  container-type: inline-size;
+  container-name: file-list;
+}
+
+#file-list > div {
+  padding: 0.375rem 1rem;
+  font-size: 0.8125rem;
+  font-family: var(--font-mono);
+  color: var(--cream-dim);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border-left: 0.125rem solid transparent;
+  opacity: 0;
+  transform: translateX(-0.5rem);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#file-list > div.file-item-reveal {
+  animation: fileReveal 0.3s var(--spring-soft) forwards;
+}
+
+#file-list > div:hover {
+  background: rgba(184, 112, 60, 0.08);
+  color: var(--cream);
+}
+
+#file-list > div.active {
+  color: var(--wren-bright);
+  border-left-color: var(--wren);
+  background: rgba(184, 112, 60, 0.12);
+}
+
+/* Container query: truncate filename when list is narrow */
+@container file-list (max-width: 12rem) {
+  #file-list > div {
+    font-size: 0.6875rem;
+    padding: 0.375rem 0.625rem;
+  }
+}
+
+/* ── Active File Bar ── */
+
+#active-file-bar {
+  padding: 0.5rem 1rem;
+  border-top: 1px solid var(--hairline);
+  background: var(--panel-raised);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--cream-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════
+   EDITOR PANEL — Mobile: full width, flex child
+   ═══════════════════════════════════════════════ */
+
+#editor-wrap {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-bottom: 1px solid var(--hairline);
+  flex: 1 1 50%;
+  min-height: 0;
+  position: relative;
+}
+
+@media (min-width: var(--bp-split)) {
+  #editor-wrap {
+    border-bottom: none;
+    border-right: 1px solid var(--hairline);
+    flex: 1 1 50%;
+  }
+}
+
+/* ── Editor Toolbar ── */
+
+#editor-toolbar-label {
+  padding: 0.625rem 1rem;
+  font-family: var(--font-display);
+  font-size: clamp(0.75rem, 2vw, 0.8125rem);
+  font-style: italic;
+  color: var(--wren);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--panel-raised);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  container-type: inline-size;
+  container-name: editor-label;
+}
+
+#editor-toolbar-label::before {
+  content: '✦';
+  font-size: 0.625rem;
+  opacity: 0.6;
+}
+
+#editor-toolbar-actions {
+  padding: 0.375rem 0.75rem;
+  border-bottom: 1px solid var(--hairline);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--panel);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  container-type: inline-size;
+  container-name: editor-actions;
+}
+
+/* Container query: collapse button labels when toolbar is narrow */
+@container editor-actions (max-width: 24rem) {
+  #editor-toolbar-actions .btn-label {
+    display: none;
+  }
+
+  #editor-toolbar-actions button {
+    padding: 0.375rem 0.5rem;
+  }
+}
+
+#editor {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: clamp(0.75rem, 1.5vw, 0.8125rem);
+  line-height: 1.6;
+  padding: 1rem;
+  background: transparent;
+  color: var(--cream);
+  border: none;
+  resize: none;
+  outline: none;
+  tab-size: 2;
+  min-height: 0;
+}
+
+#char-count {
+  position: absolute;
+  bottom: 0.5rem;
+  right: 0.75rem;
+  font-size: 0.6875rem;
+  font-family: var(--font-mono);
+  color: var(--cream-dim);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════
+   PREVIEW PANEL — Mobile: full width below editor
+   ═══════════════════════════════════════════════ */
+
+#preview-wrap {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-deep);
+  flex: 1 1 50%;
+  min-height: 0;
+  position: relative;
+}
+
+#preview {
+  flex: 1;
+  border: none;
+  background: white;
+  border-radius: var(--radius-md);
+  margin: 0.75rem;
+  max-width: 100%;
+  height: auto;
+  box-shadow: var(--shadow-lg);
+  transition:
+    width var(--transition-slow) var(--spring-soft),
+    border-radius var(--transition-slow) var(--spring-soft),
+    margin var(--transition-slow) var(--spring-soft);
+}
+
+#preview.preview-mobile {
+  width: 23.4375rem;
+  max-width: calc(100% - 1.5rem);
+  margin: 0.75rem auto;
+  border-radius: var(--radius-xl);
+}
+
+#preview.preview-desktop {
+  width: 100%;
+  border-radius: var(--radius-md);
+}
+
+@media (min-width: var(--bp-comfortable)) {
+  #preview {
+    margin: 0.75rem 1rem;
+  }
+}
+
+#empty-preview {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  color: var(--cream-dim);
+  text-align: center;
+  padding: 1.5rem;
+  container-type: inline-size;
+  container-name: empty-state;
+}
+
+#empty-preview .wren-mark {
+  width: clamp(3rem, 8vw, 4rem);
+  height: clamp(3rem, 8vw, 4rem);
+  opacity: 0.4;
+  animation: wrenIdle 3s ease-in-out infinite;
+}
+
+@container empty-state (min-width: 20rem) {
+  #empty-preview {
+    padding: 2rem;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   SPLIT LAYOUT — Editor + Preview side by side
+   ═══════════════════════════════════════════════ */
+
+@media (min-width: var(--bp-split)) {
+  #root {
+    flex-direction: row;
+  }
+
+  #editor-wrap,
+  #preview-wrap {
+    flex: 1 1 50%;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   FULL 3-COL LAYOUT — Sidebar + Editor + Preview
+   ═══════════════════════════════════════════════ */
+
+@media (min-width: var(--bp-sidebar)) {
+  #root {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) 1fr 1fr;
+    grid-template-rows: 1fr;
+    height: 100dvh;
+  }
+
+  #file-sidebar {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  #editor-wrap {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  #preview-wrap {
+    grid-column: 3;
+    grid-row: 1;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   BUTTONS (Shared)
+   ═══════════════════════════════════════════════ */
+
+button {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: var(--panel-raised);
+  color: var(--cream-dim);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+button:hover {
+  background: var(--hairline);
+  color: var(--cream);
+  border-color: var(--cream-dim);
+}
+
+button:active {
+  transform: scale(0.97);
+}
+
+/* ── Run Button ── */
+
+#run-btn {
+  background: var(--wren);
+  color: var(--cream);
+  border-color: var(--wren);
+  font-weight: 500;
+  position: relative;
+  overflow: hidden;
+}
+
+#run-btn:hover {
+  background: var(--wren-bright);
+  border-color: var(--wren-bright);
+  box-shadow: var(--shadow-glow-wren);
+}
+
+#run-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.4s;
+}
+
+#run-btn:hover::after {
+  transform: translateX(100%);
+}
+
+#wren-hop {
+  display: inline-block;
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+#wren-hop.loading {
+  animation: wrenHop 0.6s var(--spring-bounce) infinite;
+}
+
+/* ── Share Button ── */
+
+#share-btn {
+  position: relative;
+}
+
+#share-btn.copied {
+  background: var(--moss);
+  border-color: var(--moss);
+  color: var(--cream);
+  animation: microConfirm 0.4s var(--spring-bounce);
+}
+
+/* ── Pro Button ── */
+
+#pro-btn {
+  background: transparent;
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+#pro-btn:hover {
+  background: rgba(217, 164, 65, 0.1);
+  border-color: var(--gold);
+  color: var(--gold);
+  box-shadow: var(--shadow-glow-moss);
+}
+
+/* ── Viewport Toggle ── */
+
+#viewport-toggle {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  padding: 0.25rem 0.5rem;
+}
+
+/* ── GitHub Import Button ── */
+
+#gh-import-btn {
+  background: var(--panel-raised);
+  border-color: var(--hairline);
+}
+
+#gh-import-btn:hover {
+  border-color: var(--moss);
+  color: var(--moss-bright);
+}
+
+/* ═══════════════════════════════════════════════
+   IDLE BANNER
+   ═══════════════════════════════════════════════ */
+
+#idle-banner {
+  background: var(--panel-raised);
+  border-top: 1px solid var(--hairline);
+  padding: 0.75rem 1rem;
+  font-size: 0.75rem;
+  color: var(--cream-dim);
+  overflow: hidden;
+  max-height: 3.75rem;
+  flex-shrink: 0;
+  transition:
+    max-height 0.4s var(--spring-soft),
+    padding 0.4s var(--spring-soft),
+    opacity 0.3s;
+}
+
+#idle-banner.banner-collapsed {
+  max-height: 0;
+  padding: 0 1rem;
+  opacity: 0;
+}
+
+#idle-banner.banner-expanded {
+  max-height: 3.75rem;
+  padding: 0.75rem 1rem;
+  opacity: 1;
+}
+
+/* ═══════════════════════════════════════════════
+   GITHUB IMPORT MODAL
+   ═══════════════════════════════════════════════ */
+
+#gh-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(27, 23, 18, 0.85);
+  backdrop-filter: blur(0.5rem);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  opacity: 0;
+  transform: scale(0.95);
+  transition: opacity 0.3s, transform 0.4s var(--spring-soft);
+  pointer-events: none;
+}
+
+#gh-modal-backdrop.modal-visible {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: all;
+}
+
+#gh-modal-backdrop.modal-hidden {
+  opacity: 0;
+  transform: scale(0.95);
+  pointer-events: none;
+}
+
+#gh-modal-backdrop > div {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 30rem;
+  box-shadow: var(--shadow-lg);
+  transform: translateY(1.25rem);
+  transition: transform 0.4s var(--spring-bounce);
+  container-type: inline-size;
+  container-name: gh-modal;
+}
+
+#gh-modal-backdrop.modal-visible > div {
+  transform: translateY(0);
+}
+
+/* Container query: stack modal buttons when narrow */
+@container gh-modal (max-width: 22rem) {
+  #gh-modal-backdrop > div {
+    padding: 1rem;
+  }
+
+  #gh-modal-backdrop .modal-actions {
+    flex-direction: column;
+  }
+
+  #gh-fetch-btn {
+    margin-left: 0;
+    margin-top: 0.5rem;
+  }
+}
+
+#gh-modal-backdrop label {
+  display: block;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--cream-dim);
+  margin-bottom: 0.375rem;
+  margin-top: 1rem;
+}
+
+#gh-modal-backdrop label:first-of-type {
+  margin-top: 0;
+}
+
+#gh-repo-input,
+#gh-branch-input,
+#gh-token-input {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  background: var(--bg-deep);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  color: var(--cream);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  transition: border-color var(--transition-fast);
+}
+
+#gh-repo-input:focus,
+#gh-branch-input:focus,
+#gh-token-input:focus {
+  outline: none;
+  border-color: var(--wren);
+  box-shadow: var(--shadow-glow-wren);
+}
+
+#gh-advanced-toggle {
+  background: transparent;
+  border: none;
+  color: var(--wren);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0.5rem 0;
+  margin-top: 0.75rem;
+  display: block;
+}
+
+#gh-advanced {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s var(--spring-soft);
+}
+
+#gh-advanced.open {
+  max-height: 12.5rem;
+}
+
+#gh-cancel-btn {
+  background: transparent;
+  border-color: var(--hairline);
+}
+
+#gh-fetch-btn {
+  background: var(--wren);
+  border-color: var(--wren);
+  color: var(--cream);
+  margin-left: 0.5rem;
+}
+
+#gh-fetch-btn:hover {
+  background: var(--wren-bright);
+  border-color: var(--wren-bright);
+}
+
+/* ── Log Panel ── */
+
+#gh-log-panel {
+  margin-top: 1rem;
+  background: var(--bg-deep);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.3s var(--spring-soft);
+  container-type: inline-size;
+  container-name: gh-log;
+}
+
+#gh-log-panel.log-active {
+  max-height: 12.5rem;
+}
+
+#gh-log-title {
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--cream-dim);
+  border-bottom: 1px solid var(--hairline);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+#gh-log-spinner {
+  width: 0.75rem;
+  height: 0.75rem;
+  animation: wrenSpin 0.8s var(--spring-bounce) infinite;
+}
+
+#gh-log-body {
+  padding: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--cream-dim);
+  max-height: 9.375rem;
+  overflow-y: auto;
+  line-height: 1.6;
+}
+
+#gh-log-close {
+  background: transparent;
+  border: none;
+  color: var(--cream-dim);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0 0.25rem;
+}
+
+#gh-log-close:hover {
+  color: var(--cream);
+}
+
+/* ═══════════════════════════════════════════════
+   SPONSOR / AD GATE
+   ═══════════════════════════════════════════════ */
+
+#gate-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(27, 23, 18, 0.9);
+  backdrop-filter: blur(0.75rem);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 0.4s, transform 0.5s var(--spring-bounce);
+  pointer-events: none;
+}
+
+#gate-backdrop.modal-visible {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: all;
+}
+
+#gate-backdrop.modal-hidden {
+  opacity: 0;
+  transform: scale(0.9);
+  pointer-events: none;
+}
+
+#gate-sponsor-box {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xl);
+  padding: 2rem;
+  width: 100%;
+  max-width: 26.25rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+  container-type: inline-size;
+  container-name: gate-box;
+}
+
+#gate-sponsor-box::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    transparent 0%,
+    rgba(184, 112, 60, 0.05) 25%,
+    transparent 50%,
+    rgba(122, 140, 92, 0.05) 75%,
+    transparent 100%
+  );
+  background-size: 200% 200%;
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+/* Container query: tighter padding on small gate box */
+@container gate-box (max-width: 20rem) {
+  #gate-sponsor-box {
+    padding: 1.5rem 1rem;
+  }
+
+  #gate-video-btn {
+    padding: 0.625rem 1rem;
+    font-size: 0.8125rem;
+  }
+}
+
+#gate-video-btn {
+  background: var(--wren);
+  border-color: var(--wren);
+  color: var(--cream);
+  padding: 0.625rem 1.5rem;
+  font-size: 0.875rem;
+  margin-top: 1rem;
+  position: relative;
+  z-index: 1;
+}
+
+#gate-video-btn:hover {
+  background: var(--wren-bright);
+  border-color: var(--wren-bright);
+  box-shadow: var(--shadow-glow-wren);
+}
+
+#gate-skip-btn {
+  background: transparent;
+  border: none;
+  color: var(--cream-dim);
+  font-size: 0.75rem;
+  margin-top: 0.75rem;
+  position: relative;
+  z-index: 1;
+}
+
+#gate-skip-btn:hover {
+  color: var(--cream);
+}
+
+#gate-timer {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--cream-dim);
+  margin-top: 0.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+/* ═══════════════════════════════════════════════
+   TOAST NOTIFICATIONS
+   ═══════════════════════════════════════════════ */
+
+#toast-stack {
+  position: fixed;
+  bottom: 1rem;
+  left: 1rem;
+  right: 1rem;
+  z-index: 300;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.5rem;
+  pointer-events: none;
+  container-type: inline-size;
+  container-name: toast-container;
+}
+
+@media (min-width: var(--bp-split)) {
+  #toast-stack {
+    bottom: 1.5rem;
+    right: 1.5rem;
+    left: auto;
+    width: auto;
+    max-width: 22.5rem;
+  }
+}
+
+#toast-stack > div {
+  background: var(--panel-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  font-size: 0.8125rem;
+  color: var(--cream);
+  box-shadow: var(--shadow-md);
+  max-width: 100%;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(1rem) scale(0.95);
+}
+
+#toast-stack > div.toast-enter {
+  animation: toastIn 0.4s var(--spring-bounce) forwards;
+}
+
+#toast-stack > div.toast-exit {
+  animation: toastOut 0.3s ease-in forwards;
+}
+
+/* Container query: compact toasts in narrow containers */
+@container toast-container (max-width: 18rem) {
+  #toast-stack > div {
+    font-size: 0.75rem;
+    padding: 0.5rem 0.75rem;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   DRAG & DROP ZONE
+   ═══════════════════════════════════════════════ */
+
+.drag-zone {
+  border: 2px dashed var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  text-align: center;
+  color: var(--cream-dim);
+  transition: all var(--transition-base);
+}
+
+.drag-zone.drag-active {
+  border-color: var(--wren);
+  color: var(--wren-bright);
+  background: rgba(184, 112, 60, 0.05);
+  animation: dragPulse 1.5s ease-in-out infinite;
+}
+
+/* ═══════════════════════════════════════════════
+   KEYFRAME ANIMATIONS
+   All transform/opacity only for cheap rendering.
+   ═══════════════════════════════════════════════ */
+
+/* Wren hop — squash/stretch for weight & life */
+@keyframes wrenHop {
+  0% {
+    transform: translateY(0) scale(1, 1);
+  }
+  15% {
+    transform: translateY(0.25rem) scale(1.1, 0.9);
+  }
+  35% {
+    transform: translateY(-0.75rem) scale(0.9, 1.1);
+  }
+  55% {
+    transform: translateY(-0.125rem) scale(1.05, 0.95);
+  }
+  70% {
+    transform: translateY(0.0625rem) scale(0.98, 1.02);
+  }
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+}
+
+/* Sidebar landing — overshoot then settle */
+@keyframes sidebarLand {
+  0% {
+    transform: translateX(-1.25rem);
+    opacity: 0.5;
+  }
+  60% {
+    transform: translateX(0.25rem);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* File item staggered reveal */
+@keyframes fileReveal {
+  0% {
+    opacity: 0;
+    transform: translateX(-0.5rem);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Toast entrance — subtle 3D personality */
+@keyframes toastIn {
+  0% {
+    opacity: 0;
+    transform: translateY(1rem) scale(0.95) rotateX(-10deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotateX(0deg);
+  }
+}
+
+/* Toast exit — gentle fade down */
+@keyframes toastOut {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(0.5rem) scale(0.95);
+  }
+}
+
+/* Share button micro-confirmation bounce */
+@keyframes microConfirm {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.08);
+  }
+  60% {
+    transform: scale(0.96);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Empty preview wren — gentle idle drift */
+@keyframes wrenIdle {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-0.1875rem) rotate(-2deg);
+  }
+  75% {
+    transform: translateY(-0.0625rem) rotate(2deg);
+  }
+}
+
+/* Log spinner — wren-inspired scale rotation */
+@keyframes wrenSpin {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  25% {
+    transform: rotate(90deg) scale(1.1);
+  }
+  50% {
+    transform: rotate(180deg) scale(0.9);
+  }
+  75% {
+    transform: rotate(270deg) scale(1.05);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+/* Drag zone — breathing border glow */
+@keyframes dragPulse {
+  0%, 100% {
+    border-color: var(--wren);
+    box-shadow: 0 0 0 0 rgba(184, 112, 60, 0.2);
+  }
+  50% {
+    border-color: var(--wren-bright);
+    box-shadow: 0 0 1.25rem 0.25rem rgba(184, 112, 60, 0.1);
+  }
+}
+
+/* Sponsor box — diagonal shimmer for "content loading" read */
+@keyframes shimmer {
+  0% {
+    background-position: 200% 200%;
+  }
+  100% {
+    background-position: -200% -200%;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   REDUCED MOTION — Full fallback
+   ═══════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  #wren-hop.loading {
+    animation: none;
+    opacity: 0.7;
+  }
+
+  #gh-log-spinner {
+    animation: none;
+    opacity: 0.7;
+  }
+
+  #empty-preview .wren-mark {
+    animation: none;
+  }
+
+  #gate-sponsor-box::before {
+    animation: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   SCROLLBAR
+   ═══════════════════════════════════════════════ */
+
+::-webkit-scrollbar {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-deep);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--hairline);
+  border-radius: 0.25rem;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--cream-dim);
+}
+
+/* ═══════════════════════════════════════════════
+   FOCUS STATES
+   ═══════════════════════════════════════════════ */
+
+:focus-visible {
+  outline: 2px solid var(--wren);
+  outline-offset: 2px;
+}
+
+button:focus-visible {
+  outline-offset: 2px;
+}
+
+/* ═══════════════════════════════════════════════
+   UTILITIES
+   ═══════════════════════════════════════════════ */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.text-wren { color: var(--wren); }
+.text-moss { color: var(--moss); }
+.text-gold { color: var(--gold); }
+.text-cream { color: var(--cream); }
+.text-dim { color: var(--cream-dim); }
+.font-mono { font-family: var(--font-mono); }
+.font-display { font-family: var(--font-display); }
