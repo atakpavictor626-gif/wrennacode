@@ -1,0 +1,466 @@
+(function(){
+  'use strict';
+  console.log("Wrenna Engine Starting v4 (External JS)...");
+
+  // Clean, standard JS code. No HTML parser evasion needed in external JS files!
+  const closeScriptTag = '</script>';
+  const scriptSrcRegex = /<script((?:(?!type=)[^>])*)src=["']([^"']+)["']([^>]*)>\s*<\/script>/gi;
+  const moduleScriptRegex = /<script\b[^>]*type=["']module["'][^>]*>\s*<\/script>/i;
+
+  const codeInput = document.getElementById('code-input');
+  const codeHighlight = document.getElementById('code-highlight');
+  const runBtn = document.getElementById('run-btn');
+  const buildState = document.getElementById('build-state');
+  const editorStatus = document.getElementById('editor-status');
+  const charCount = document.getElementById('char-count');
+  const preview = document.getElementById('preview');
+  const previewDevice = document.getElementById('preview-device');
+  const previewEmpty = document.getElementById('preview-empty');
+  const previewUrl = document.getElementById('preview-url');
+  const previewFrame = document.getElementById('preview-frame');
+  const projectName = document.getElementById('project-name');
+  const projectState = document.getElementById('project-state');
+  const toastsEl = document.getElementById('toasts');
+  const sponsorBanner = document.getElementById('sponsor-banner');
+
+  const filetree = document.getElementById('filetree');
+  const treeRoot = document.getElementById('tree-root');
+  const treeSearch = document.getElementById('tree-search');
+  const treeCloseBtn = document.getElementById('tree-close-btn');
+  function getActiveIndicator(){ return document.getElementById('active-indicator'); }
+  const editorTabs = document.getElementById('editor-tabs');
+  const workspace = document.getElementById('workspace');
+
+  // CHANGED LS KEYS TO V4 TO PREVENT OLD DRAFTS FROM LOADING
+  const LS = { draft: 'wrenna_v4_draft', runs: 'wrenna_v4_run_count', fuel: 'wrenna_v4_fuel_passes', pro: 'wrenna_v4_pro', ghToken: 'wrenna_v4_gh_token' };
+  let currentFilePath = null;
+  let editedFiles = new Map();
+
+  function toast(msg, kind){
+    const el = document.createElement('div');
+    el.className = 'toast' + (kind === 'err' ? ' err' : '');
+    el.textContent = msg;
+    toastsEl.appendChild(el);
+    setTimeout(()=>{ el.classList.add('exit'); setTimeout(()=> el.remove(), 240); }, 2600);
+  }
+
+  function fitDevice() {
+    if (!previewFrame || !previewDevice) return;
+    const fw = previewFrame.clientWidth - 32; 
+    const fh = previewFrame.clientHeight - 32;
+    if (fw <= 0 || fh <= 0) return;
+
+    let ratio = 16/9;
+    if (previewDevice.classList.contains('mobile')) ratio = 9/19.5;
+    if (previewDevice.classList.contains('tablet')) ratio = 3/4;
+
+    let dw = fw;
+    let dh = dw / ratio;
+
+    if (dh > fh) {
+      dh = fh;
+      dw = dh * ratio;
+    }
+
+    previewDevice.style.width = dw + 'px';
+    previewDevice.style.height = dh + 'px';
+  }
+  window.addEventListener('resize', fitDevice);
+
+  function openModal(id){ const el = document.getElementById(id); if(el) el.classList.add('open'); }
+  function closeModal(id){ const el = document.getElementById(id); if(el) el.classList.remove('open'); }
+  document.querySelectorAll('[data-modal-close]').forEach(btn=> btn.addEventListener('click', ()=> { const ov = btn.closest('.modal-overlay'); if(ov) ov.classList.remove('open'); }));
+  document.querySelectorAll('.modal-overlay').forEach(ov=> ov.addEventListener('click', e=>{ if (e.target === ov) ov.classList.remove('open'); }));
+  document.addEventListener('keydown', e=>{ if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(ov=> ov.classList.remove('open')); });
+
+  document.getElementById('gh-import-btn').addEventListener('click', ()=> openModal('modal-github'));
+  document.getElementById('share-btn').addEventListener('click', openShareModal);
+  document.getElementById('mobile-share-btn').addEventListener('click', openShareModal);
+
+  document.querySelectorAll('.mtab-btn').forEach(btn=>{
+    if (btn.id === 'mobile-share-btn') return;
+    btn.addEventListener('click', ()=>{
+      const panel = btn.dataset.panel;
+      if (panel === 'files' && !workspace.classList.contains('has-tree')){ openModal('modal-github'); return; }
+      document.querySelectorAll('.mtab-btn').forEach(b=> b.classList.remove('active'));
+      btn.classList.add('active');
+      workspace.dataset.panel = panel;
+      setTimeout(fitDevice, 50); 
+    });
+  });
+  document.getElementById('pro-btn').addEventListener('click', ()=> openModal('modal-pro'));
+
+  const PRO_CHECKOUT_URLS = { annual: '', onetime: '' };
+  let selectedPlan = 'annual';
+  function selectPlan(plan){ selectedPlan = plan; document.querySelectorAll('.pro-plan').forEach(el=> el.classList.toggle('selected', el.dataset.plan === plan)); }
+  document.querySelectorAll('.pro-plan').forEach(el=> el.addEventListener('click', ()=> selectPlan(el.dataset.plan)));
+  selectPlan('annual');
+  document.getElementById('pro-checkout-btn').addEventListener('click', ()=>{
+    const url = PRO_CHECKOUT_URLS[selectedPlan];
+    if (!url){ toast('Checkout isn\'t configured yet for this plan — placeholder'); return; }
+    window.location.href = url;
+  });
+
+  function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function highlight(code){
+    let escaped = escapeHtml(code);
+    escaped = escaped.replace(/(\/\/[^\n]*)/g, '<span class="tok-com">$1</span>');
+    escaped = escaped.replace(/(&quot;|&#39;|"|')((?:(?!\1)[^\\]|\\.)*?)\1/g, (m)=> `<span class="tok-str">${m}</span>`);
+    escaped = escaped.replace(/\b(const|let|var|function|return|import|export|from|default|if|else|for|while|class|extends|new|async|await|try|catch|typeof|null|undefined|true|false)\b/g, '<span class="tok-key">$1</span>');
+    escaped = escaped.replace(/([a-zA-Z_$][\w$]*)(?=\()/g, '<span class="tok-fn">$1</span>');
+    return escaped;
+  }
+  function syncHighlight(){ codeHighlight.innerHTML = highlight(codeInput.value) + '\n'; charCount.textContent = codeInput.value.length.toLocaleString() + ' chars'; }
+  function syncScroll(){ codeHighlight.scrollTop = codeInput.scrollTop; codeHighlight.scrollLeft = codeInput.scrollLeft; }
+  codeInput.addEventListener('input', ()=>{
+    syncHighlight();
+    clearTimeout(codeInput._draftTimer);
+    codeInput._draftTimer = setTimeout(()=> localStorage.setItem(LS.draft, codeInput.value), 500);
+    if (currentTreeData && currentFilePath){ editedFiles.set(currentFilePath, codeInput.value); markDirty(currentFilePath); setUnsaved(true); } else { setUnsaved(true); }
+    clearTimeout(codeInput._liveTimer);
+    codeInput._liveTimer = setTimeout(livePreviewRefresh, 300); 
+  });
+  codeInput.addEventListener('scroll', syncScroll);
+  codeInput.addEventListener('keydown', e=>{
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter'){ e.preventDefault(); attemptRun(); }
+    if (e.key === 'Tab'){ e.preventDefault(); const s = codeInput.selectionStart, en = codeInput.selectionEnd; codeInput.value = codeInput.value.slice(0,s) + '  ' + codeInput.value.slice(en); codeInput.selectionStart = codeInput.selectionEnd = s + 2; syncHighlight(); }
+  });
+
+  function setUnsaved(v){ projectState.textContent = v ? '· unsaved' : ''; projectState.classList.toggle('unsaved', v); }
+
+  const codeSurface = document.querySelector('.code-surface');
+  ['dragenter','dragover'].forEach(evt=> codeSurface.addEventListener(evt, e=>{ e.preventDefault(); codeSurface.style.outline = '2px dashed var(--wren-soft)'; }));
+  ['dragleave','drop'].forEach(evt=> codeSurface.addEventListener(evt, e=>{ e.preventDefault(); codeSurface.style.outline = 'none'; }));
+  codeSurface.addEventListener('drop', e=>{
+    const file = e.dataTransfer.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{ codeInput.value = reader.result; syncHighlight(); projectName.textContent = file.name; toast('Loaded ' + file.name, 'ok'); };
+    reader.readAsText(file);
+  });
+
+  function buildDoc(code){
+    const trimmed = code.trim();
+    if (/^<!DOCTYPE|<html/i.test(trimmed)) return code;
+    if (/<[a-z][\s\S]*>/i.test(trimmed)) return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body>${code}</body></html>`;
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:sans-serif;padding:16px;color:#222}</style></head><body><script>${code}${closeScriptTag}</body></html>`;
+  }
+
+  async function renderPreview(){
+    if (!codeInput.value.trim() && !currentTreeData){ previewEmpty.style.display = 'grid'; previewDevice.style.display = 'none'; previewUrl.textContent = 'preview'; return; }
+    if (currentTreeData){
+      const finalDoc = await rebuildProject(currentTreeData.fileSource, currentTreeData.filePaths);
+      preview.srcdoc = finalDoc; previewEmpty.style.display = 'none'; previewDevice.style.display = 'flex'; fitDevice(); previewUrl.textContent = currentTreeData.fileSource.label; return;
+    }
+    previewEmpty.style.display = 'none'; previewDevice.style.display = 'flex'; preview.srcdoc = buildDoc(codeInput.value); fitDevice(); previewUrl.textContent = 'localhost:7331';
+  }
+
+  let runCount = parseInt(localStorage.getItem(LS.runs) || '0', 10);
+  let fuelPasses = parseInt(localStorage.getItem(LS.fuel) || '0', 10);
+  let isPro = localStorage.getItem(LS.pro) === 'true';
+  if (isPro) sponsorBanner.style.display = 'none';
+
+  function shouldGate(){
+    if (isPro) return false;
+    const n = runCount + 1;
+    if (n === 1) return false;
+    if (nextGateAt === null) nextGateAt = 5 + Math.floor(Math.random() * 4);
+    const wouldGate = n >= nextGateAt;
+    if (wouldGate && fuelPasses > 0){ fuelPasses--; localStorage.setItem(LS.fuel, fuelPasses); toast('Used a free run pass (' + fuelPasses + ' left)'); nextGateAt = n + 5 + Math.floor(Math.random() * 4); return false; }
+    if (wouldGate) nextGateAt = n + 5 + Math.floor(Math.random() * 4);
+    return wouldGate;
+  }
+  let nextGateAt = null;
+
+  function attemptRun(){ if (!codeInput.value.trim() && !currentTreeData){ toast('Nothing to run yet — write or drop some code first'); return; } if (shouldGate()) openGate(); else doRun(); }
+  function doRun(){ editorStatus.classList.add('building'); buildState.textContent = 'bundling…'; renderPreview().catch(e=>{ console.error(e); toast('Run failed: ' + e.message, 'err'); }).finally(()=>{ editorStatus.classList.remove('building'); buildState.textContent = 'built · ready'; runCount++; localStorage.setItem(LS.runs, runCount); }); }
+  runBtn.addEventListener('click', attemptRun);
+
+  document.getElementById('live-toggle-btn').addEventListener('click', function(){ liveEnabled = !liveEnabled; this.classList.toggle('is-off', !liveEnabled); this.setAttribute('aria-pressed', String(liveEnabled)); toast(liveEnabled ? 'Live preview on' : 'Live preview off — use Run to update manually'); });
+  let liveEnabled = true; let liveGeneration = 0;
+  async function livePreviewRefresh(){
+    if (!liveEnabled) return; if (!codeInput.value.trim() && !currentTreeData) return;
+    const myGen = ++liveGeneration; buildState.textContent = 'live · updating…';
+    try { await renderPreview(); } catch(e){ if (myGen === liveGeneration) buildState.textContent = 'live · error (see console)'; console.error(e); return; }
+    if (myGen === liveGeneration) buildState.textContent = 'live · up to date';
+  }
+
+  const gateBackdrop = document.getElementById('modal-adgate');
+  const gateSkipBtn = document.getElementById('gate-skip-btn');
+  const gateVideoBtn = document.getElementById('gate-video-btn');
+  function openGate(){ openModal('modal-adgate'); gateSkipBtn.style.visibility = 'hidden'; setTimeout(()=> gateSkipBtn.style.visibility = 'visible', 2000); }
+  gateSkipBtn.addEventListener('click', ()=>{ closeModal('modal-adgate'); doRun(); });
+  gateVideoBtn.addEventListener('click', ()=>{ toast('Rewarded video would play here (SDK not wired up yet)'); fuelPasses += 10; localStorage.setItem(LS.fuel, fuelPasses); toast('+10 free runs added', 'ok'); closeModal('modal-adgate'); doRun(); });
+
+  function setViewport(mode, btn){
+    document.querySelectorAll('[data-viewport]').forEach(b=> b.classList.remove('active'));
+    btn.classList.add('active');
+    previewDevice.classList.add('is-switching');
+    setTimeout(() => {
+      previewDevice.classList.remove('mobile', 'tablet', 'desktop');
+      previewDevice.classList.add(mode);
+      previewDevice.classList.remove('is-switching');
+      fitDevice();
+    }, 200);
+  }
+  document.getElementById('viewport-desktop-btn').addEventListener('click', function(){ setViewport('desktop', this); });
+  document.getElementById('viewport-tablet-btn').addEventListener('click', function(){ setViewport('tablet', this); });
+  document.getElementById('viewport-mobile-btn').addEventListener('click', function(){ setViewport('mobile', this); });
+
+  document.getElementById('banner-watch-btn').addEventListener('click', ()=> openModal('modal-adgate'));
+
+  function openShareModal(){
+    if (!codeInput.value.trim()){ toast('Write or drop some code first'); return; }
+    const compressed = LZString.compressToEncodedURIComponent(codeInput.value);
+    const url = window.location.origin + window.location.pathname + '#code=' + compressed;
+    document.getElementById('share-input').value = url;
+    document.getElementById('share-meta').textContent = url.length > 8000 ? 'large snippet — Gist fallback not wired up yet' : 'ready to copy';
+    history.replaceState(null, '', '#code=' + compressed);
+    openModal('modal-share');
+  }
+  document.getElementById('copy-btn').addEventListener('click', function(){
+    const input = document.getElementById('share-input');
+    navigator.clipboard.writeText(input.value).then(()=>{ this.textContent = 'Copied'; this.classList.add('copied'); toast('Share link copied', 'ok'); setTimeout(()=>{ this.textContent = 'Copy'; this.classList.remove('copied'); }, 1600); }).catch(()=> toast('Could not copy automatically', 'err'));
+  });
+  document.getElementById('open-full-preview-btn').addEventListener('click', ()=>{
+    if (previewEmpty.style.display !== 'none' || !preview.srcdoc){ toast('Nothing to preview yet — hit Run first'); return; }
+    const compressed = LZString.compressToEncodedURIComponent(preview.srcdoc);
+    const url = window.location.origin + window.location.pathname + '#doc=' + compressed;
+    if (url.length > 12000){ toast('This build is large — the new tab may fail to load.', 'err'); }
+    window.open(url, '_blank');
+  });
+
+  function loadFromHash(){
+    const hash = window.location.hash;
+    if (hash.startsWith('#doc=')){ try { const d = LZString.decompressFromEncodedURIComponent(hash.slice(5)); if (d){ preview.srcdoc = d; previewEmpty.style.display = 'none'; previewDevice.style.display = 'flex'; fitDevice(); previewUrl.textContent = 'shared preview'; toast('Loaded shared preview', 'ok'); return true; } } catch(e){ console.error(e); } }
+    if (hash.startsWith('#code=')){ try { const d = LZString.decompressFromEncodedURIComponent(hash.slice(6)); if (d){ codeInput.value = d; toast('Loaded shared code', 'ok'); return true; } } catch(e){ console.error(e); } }
+    return false;
+  }
+  if (!loadFromHash()){ const draft = localStorage.getItem(LS.draft); if (draft) codeInput.value = draft; }
+  syncHighlight();
+  if (codeInput.value.trim()) renderPreview();
+  setTimeout(fitDevice, 100); 
+
+  const MAX_FILES = 400;
+  function parseRepoInput(input){
+    input = input.trim().replace(/\.git$/, '');
+    let m = input.match(/github\.com\/([^\/\s]+)\/([^\/\s]+?)(?:\/tree\/([^\/\s]+))?\/?$/);
+    if (m) return { owner: m[1], repo: m[2], branch: m[3] || null };
+    m = input.match(/^([^\/\s]+)\/([^\/\s]+)$/);
+    if (m) return { owner: m[1], repo: m[2], branch: null };
+    throw new Error('Could not parse that as a GitHub repo — try "owner/repo" or a full github.com URL.');
+  }
+
+  function makeGithubSource(owner, repo, branch){
+    return { kind: 'github', label: `${owner}/${repo}`, owner, repo, branch, async read(path){ if (editedFiles.has(path)) return editedFiles.get(path); return getRawFile(owner, repo, branch, path); }, async assetUrl(path){ return rawFileUrl(owner, repo, branch, path); } };
+  }
+  function makeLocalSource(dirHandles, rootName){
+    const blobCache = new Map();
+    return { kind: 'local', label: rootName, async read(path){ if (editedFiles.has(path)) return editedFiles.get(path); const handle = dirHandles.get(path); if (!handle) throw new Error('File not found: ' + path); const file = await handle.getFile(); return file.text(); }, async assetUrl(path){ if (blobCache.has(path)) return blobCache.get(path); const handle = dirHandles.get(path); if (!handle) return ''; const file = await handle.getFile(); const url = URL.createObjectURL(file); blobCache.set(path, url); return url; } };
+  }
+
+  async function ghApiFetch(path, token){
+    const headers = { 'Accept': 'application/vnd.github+json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const res = await fetch('https://api.github.com/' + path, { headers });
+    if (!res.ok){ if (res.status === 403) throw new Error('GitHub API rate limit hit. Add a token to raise the 60/hr limit.'); if (res.status === 404) throw new Error('Repo or branch not found — double check the URL.'); throw new Error('GitHub API error (' + res.status + ')'); }
+    return res.json();
+  }
+  const rawCache = new Map();
+  function rawFileUrl(owner, repo, branch, path){ return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path.split('/').map(encodeURIComponent).join('/')}`; }
+  async function getRawFile(owner, repo, branch, path){ const key = owner+'/'+repo+'/'+branch+'/'+path; if (rawCache.has(key)) return rawCache.get(key); const res = await fetch(rawFileUrl(owner, repo, branch, path)); if (!res.ok) throw new Error('Failed to fetch ' + path + ' (' + res.status + ')'); const text = await res.text(); rawCache.set(key, text); return text; }
+
+  function posixJoin(dir, rel){ const stack = dir ? dir.split('/') : []; for (const part of rel.split('/')){ if (part === '' || part === '.') continue; if (part === '..') stack.pop(); else stack.push(part); } return stack.join('/'); }
+  function resolveLocal(importPath, importerDir, filePaths){ const combined = importPath.startsWith('.') ? posixJoin(importerDir, importPath) : importPath.replace(/^\//, ''); const bases = [combined]; for (const ext of ['.tsx','.ts','.jsx','.js','.mjs','.cjs','.json','.css']) bases.push(combined + ext); for (const ext of ['.tsx','.ts','.jsx','.js']) bases.push(combined + '/index' + ext); for (const b of bases) if (filePaths.has(b)) return b; return null; }
+
+  async function fetchRepoTree(owner, repo, branchOverride, token){
+    ghLog(`Looking up ${owner}/${repo}…`);
+    const meta = await ghApiFetch(`repos/${owner}/${repo}`, token);
+    const branch = branchOverride || meta.default_branch;
+    ghLog(`Fetching file tree (branch: ${branch})…`);
+    const treeData = await ghApiFetch(`repos/${owner}/${repo}/git/trees/${branch}?recursive=1`, token);
+    if (treeData.truncated) ghLog('repo tree was truncated (very large repo) — some files may be missing', 'err');
+    let files = treeData.tree.filter(f => f.type === 'blob' && !/^(node_modules|\.git|dist|build|coverage|\.next|out)\//.test(f.path));
+    if (files.length > MAX_FILES){ ghLog(`${files.length} files found — only using the first ${MAX_FILES}`, 'err'); files = files.slice(0, MAX_FILES); } else { ghLog(`Found ${files.length} files.`, 'ok'); }
+    return { branch, filePaths: new Set(files.map(f=>f.path)) };
+  }
+
+  let esbuildInstance = null;
+  async function ensureEsbuild(){
+    if (esbuildInstance) return esbuildInstance;
+    ghLog('Loading in-browser bundler (esbuild-wasm, first time only)…');
+    const esbuild = await import('https://esm.sh/esbuild-wasm@0.21.5');
+    await esbuild.initialize({ wasmURL: 'https://esm.sh/esbuild-wasm@0.21.5/esbuild.wasm', worker: true });
+    esbuildInstance = esbuild; return esbuild;
+  }
+
+  function virtualFsPlugin(fileSource, filePaths, npmVersions){
+    return { name: 'wrenna-vfs', setup(build){
+      build.onResolve({ filter: /.*/ }, (args) => {
+        if (args.path.startsWith('.') || args.path.startsWith('/')){ const importerDir = args.importer ? (args.importer.includes('/') ? args.importer.split('/').slice(0,-1).join('/') : '') : ''; const resolved = resolveLocal(args.path, importerDir, filePaths); if (resolved) return { path: resolved, namespace: 'wrenna-vfs' }; return { errors: [{ text: `Could not resolve local import "${args.path}" from "${args.importer}"` }] }; }
+        const pkgName = args.path.startsWith('@') ? args.path.split('/').slice(0,2).join('/') : args.path.split('/')[0];
+        const rest = args.path.slice(pkgName.length); const version = npmVersions[pkgName] ? npmVersions[pkgName].replace(/^[\^~]/, '') : '';
+        return { path: `https://esm.sh/${pkgName}${version ? '@'+version : ''}${rest}`, external: true };
+      });
+      build.onLoad({ filter: /.*/, namespace: 'wrenna-vfs' }, async (args) => { const content = await fileSource.read(args.path); const ext = args.path.split('.').pop().toLowerCase(); const loaderMap = { js:'jsx', jsx:'jsx', ts:'ts', tsx:'tsx', mjs:'js', cjs:'js', json:'json', css:'css' }; return { contents: content, loader: loaderMap[ext] || 'text' }; });
+    }};
+  }
+
+  function findModuleEntryInHtml(html, htmlPath){ const dir = htmlPath.includes('/') ? htmlPath.split('/').slice(0,-1).join('/') : ''; const re = /<script\b[^>]*>/gi; let m; while ((m = re.exec(html))){ if (/type=["']module["']/i.test(m[0])){ const srcMatch = m[0].match(/src=["']([^"']+)["']/i); if (srcMatch && !/^https?:\/\//.test(srcMatch[1])) return posixJoin(dir, srcMatch[1].replace(/^\.?\//, '')); } } return null; }
+  function findCommonEntry(filePaths){ const common = ['src/main.tsx','src/main.jsx','src/main.ts','src/main.js','src/index.tsx','src/index.jsx','src/index.ts','src/index.js','index.tsx','index.jsx','index.ts','index.js']; for (const c of common) if (filePaths.has(c)) return c; return null; }
+
+  async function inlineStaticAssets(html, htmlPath, fileSource, filePaths){
+    const dir = htmlPath.includes('/') ? htmlPath.split('/').slice(0,-1).join('/') : '';
+    async function replaceAsync(str, regex, fn){ const matches = [...str.matchAll(regex)]; let result = str, offset = 0; for (const m of matches){ const replacement = await fn(...m); const idx = m.index + offset; result = result.slice(0, idx) + replacement + result.slice(idx + m[0].length); offset += replacement.length - m[0].length; } return result; }
+    html = await replaceAsync(html, /<link[^>]+rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi, async (match, href) => { if (/^https?:\/\//.test(href)) return match; const path = posixJoin(dir, href.replace(/^\.?\//, '')); if (!filePaths.has(path)) return match; return `<style>${await fileSource.read(path)}</style>`; });
+    html = await replaceAsync(html, scriptSrcRegex, async (match, pre, src, post) => { if (/^https?:\/\//.test(src) || /type=["']module["']/i.test(pre+post)) return match; const path = posixJoin(dir, src.replace(/^\.?\//, '')); if (!filePaths.has(path)) return match; return `<script${pre}${post}>${await fileSource.read(path)}</script>`; });
+    html = await replaceAsync(html, /(src|href)=["'](?!https?:\/\/|data:|#|mailto:)([^"']+)["']/gi, async (m, attr, val) => { const path = posixJoin(dir, val.replace(/^\.?\//, '')); if (!filePaths.has(path)) return m; return `${attr}="${await fileSource.assetUrl(path)}"`; });
+    return html;
+  }
+
+  async function rebuildProject(fileSource, filePaths){
+    let npmVersions = {};
+    if (filePaths.has('package.json')){ try { const pkg = JSON.parse(await fileSource.read('package.json')); npmVersions = Object.assign({}, pkg.dependencies, pkg.devDependencies); } catch(e){ } }
+    const htmlPath = filePaths.has('index.html') ? 'index.html' : [...filePaths].find(p => /(^|\/)index\.html$/.test(p));
+    let html = htmlPath ? await fileSource.read(htmlPath) : null;
+    let moduleEntry = html ? findModuleEntryInHtml(html, htmlPath) : null;
+    if (!moduleEntry && !html) moduleEntry = findCommonEntry(filePaths);
+    if (moduleEntry){
+      const esbuild = await ensureEsbuild();
+      const result = await esbuild.build({ entryPoints: [moduleEntry], bundle: true, format: 'esm', jsx: 'automatic', jsxImportSource: 'https://esm.sh/react' + (npmVersions.react ? '@'+npmVersions.react.replace(/^[\^~]/,'') : ''), write: false, logLevel: 'silent', plugins: [virtualFsPlugin(fileSource, filePaths, npmVersions)] });
+      let jsOut = '', cssOut = '';
+      for (const f of result.outputFiles){ if (f.path.endsWith('.css')) cssOut += f.text; else jsOut += f.text; }
+      let shell = html || '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><div id="root"></div></body></html>';
+      shell = shell.replace(moduleScriptRegex, '');
+      shell = await inlineStaticAssets(shell, htmlPath || 'index.html', fileSource, filePaths);
+      shell = /<\/body>/i.test(shell) ? shell.replace('</body>', `<script type="module">\n${jsOut}\n</script></body>`) : shell + `<script type="module">${jsOut}</script>`;
+      return shell;
+    } else if (html) { return await inlineStaticAssets(html, htmlPath, fileSource, filePaths); }
+    else { throw new Error('No index.html and no recognizable entry point for this project layout.'); }
+  }
+
+  const ghLogWrap = document.getElementById('gh-log-wrap'); const ghLogTitle = document.getElementById('gh-log-title'); const ghLogBody = document.getElementById('gh-log-body'); const ghProgress = document.getElementById('gh-progress');
+  function ghLog(msg, cls){ ghLogWrap.style.display = 'block'; const line = document.createElement('span'); line.className = 'log-line ' + (cls || 'info'); line.textContent = msg; ghLogBody.appendChild(line); ghLogBody.scrollTop = ghLogBody.scrollHeight; }
+
+  document.getElementById('gh-fetch-btn').addEventListener('click', async ()=>{
+    const input = document.getElementById('gh-repo-input').value.trim(); if (!input){ toast('Paste a repo URL or owner/repo first'); return; }
+    const branch = document.getElementById('gh-branch-input').value.trim() || null; const token = document.getElementById('gh-token-input').value.trim();
+    if (token) localStorage.setItem(LS.ghToken, token);
+    ghLogBody.innerHTML = ''; ghLogTitle.textContent = 'importing…'; ghProgress.style.display = 'block';
+    try {
+      const { owner, repo } = parseRepoInput(input); const { branch: resolvedBranch, filePaths } = await fetchRepoTree(owner, repo, branch, token); const fileSource = makeGithubSource(owner, repo, resolvedBranch);
+      ghLog('Building preview (detecting static vs. bundled, resolving imports)…'); const finalDoc = await rebuildProject(fileSource, filePaths);
+      preview.srcdoc = finalDoc; previewEmpty.style.display = 'none'; previewDevice.style.display = 'flex'; fitDevice(); previewUrl.textContent = `${owner}/${repo}`;
+      ghLogTitle.textContent = 'done'; ghLog(`github.com/${owner}/${repo} (${resolvedBranch}) is live in the preview`, 'ok'); projectName.textContent = repo; setUnsaved(false);
+      renderFileTree(fileSource, filePaths); closeModal('modal-github'); toast('Repo imported', 'ok');
+    } catch(err){ console.error(err); ghLog(err.message, 'err'); ghLogTitle.textContent = 'failed'; toast(err.message, 'err'); }
+  });
+
+  let currentTreeData = null;
+  function pathsToTree(paths){ const root = { name: '', children: {}, isFile: false }; for (const p of paths){ const parts = p.split('/'); let node = root; parts.forEach((part, i)=>{ const isFile = i === parts.length - 1; if (!node.children[part]) node.children[part] = { name: part, children: {}, isFile, fullPath: parts.slice(0, i+1).join('/') }; node = node.children[part]; }); } return root; }
+  function fileIconSvg(){ return '<svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>'; }
+  function folderIconSvg(){ return '<svg class="folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>'; }
+  function chevronSvg(){ return '<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>'; }
+
+  function renderNode(node, depth){
+    const entries = Object.values(node.children).sort((a,b)=>{ if (!!a.isFile !== !!b.isFile) return a.isFile ? 1 : -1; return a.name.localeCompare(b.name); });
+    if (!entries.length) return ''; let html = '<ul>';
+    for (const child of entries){
+      if (child.isFile){ html += `<li><button class="row file-row" data-path="${child.fullPath}">${fileIconSvg()}<span class="file-name">${child.name}</span></button></li>`; }
+      else { const collapsed = depth >= 1; html += `<li class="folder ${collapsed ? 'collapsed' : 'expanded'}"><button class="row folder-row">${chevronSvg()}${folderIconSvg()}<span class="folder-name">${child.name}</span></button><div class="folder-children">${renderNode(child, depth+1)}</div></li>`; }
+    } html += '</ul>'; return html;
+  }
+  function wireTreeInteractions(){
+    treeRoot.querySelectorAll('.folder-row').forEach(row=> row.addEventListener('click', e=>{ e.stopPropagation(); const folder = row.parentElement; folder.classList.toggle('collapsed'); folder.classList.toggle('expanded'); }));
+    treeRoot.querySelectorAll('.file-row').forEach(row=> row.addEventListener('click', ()=> openTreeFile(row)));
+  }
+  async function openTreeFile(row){
+    treeRoot.querySelectorAll('.file-row.active').forEach(r=> r.classList.remove('active')); row.classList.add('active');
+    requestAnimationFrame(()=>{ getActiveIndicator().style.top = (row.offsetTop + 6) + 'px'; });
+    const path = row.dataset.path; if (!currentTreeData) return;
+    try { const content = editedFiles.has(path) ? editedFiles.get(path) : await currentTreeData.fileSource.read(path); currentFilePath = path; codeInput.value = content; syncHighlight(); projectName.textContent = path; editorTabs.style.display = 'flex'; const dot = editedFiles.has(path) ? '<span class="edit-dot"></span>' : ''; editorTabs.innerHTML = `<div class="tab active"><span>${path.split('/').pop()}</span>${dot}</div>`; } catch(e){ toast('Could not load ' + path, 'err'); }
+  }
+  function markDirty(path){ const row = treeRoot.querySelector(`.file-row[data-path="${CSS.escape(path)}"]`); if (row && !row.querySelector('.edit-dot')) row.appendChild(Object.assign(document.createElement('span'), { className: 'edit-dot' })); const tab = editorTabs.querySelector('.tab.active'); if (tab && !tab.querySelector('.edit-dot')) tab.appendChild(Object.assign(document.createElement('span'), { className: 'edit-dot' })); }
+  function clearDirty(path){ const row = treeRoot.querySelector(`.file-row[data-path="${CSS.escape(path)}"]`); if(row) { const dot = row.querySelector('.edit-dot'); if(dot) dot.remove(); } if (currentFilePath === path) { const t = editorTabs.querySelector('.tab.active .edit-dot'); if(t) t.remove(); } }
+
+  function renderFileTree(fileSource, filePaths){
+    currentTreeData = { fileSource, filePaths }; currentFilePath = null; editedFiles.clear();
+    const tree = pathsToTree([...filePaths].sort()); treeRoot.innerHTML = '';
+    const indicator = document.createElement('div'); indicator.className = 'active-indicator'; indicator.id = 'active-indicator'; treeRoot.appendChild(indicator);
+    const wrap = document.createElement('div'); wrap.innerHTML = renderNode(tree, 0);
+    while (wrap.firstChild) treeRoot.appendChild(wrap.firstChild);
+    wireTreeInteractions(); hasProject = true; updateLayout();
+    ghPushBtn.textContent = fileSource.kind === 'local' ? 'Save' : 'Push'; ghPushBtn.title = fileSource.kind === 'local' ? 'Save changes to the local folder' : 'Push commits to GitHub';
+  }
+  treeSearch.addEventListener('input', ()=>{ const q = treeSearch.value.toLowerCase(); treeRoot.querySelectorAll('.file-row').forEach(row=>{ const path = (row.dataset.path || '').toLowerCase(); const match = !q || path.includes(q); row.closest('li').style.display = match ? '' : 'none'; if (match && q){ let el = row.closest('ul') ? row.closest('ul').closest('li.folder') : null; while (el){ el.classList.remove('collapsed'); el.classList.add('expanded'); el = el.parentElement ? el.parentElement.closest('li.folder') : null; } } }); });
+
+  const editorPaneEl = document.getElementById('editor-pane'); const previewPaneEl = document.getElementById('preview-pane');
+  let hasProject = false; let treeManuallyHidden = false; let editorHidden = false; let previewHidden = false;
+  function updateLayout(){
+    const showTree = hasProject && !treeManuallyHidden;
+    if (editorHidden && previewHidden && !showTree) editorHidden = false;
+    workspace.classList.toggle('has-tree', showTree);
+    if (!showTree) filetree.style.display = 'none'; else filetree.style.display = 'flex';
+
+    editorPaneEl.style.display = editorHidden ? 'none' : 'flex';
+    previewPaneEl.style.display = previewHidden ? 'none' : 'flex';
+
+    const cols = [];
+    if (!editorHidden) cols.push('minmax(0, 1.6fr)');
+    if (!previewHidden) cols.push('minmax(0, 1fr)');
+    workspace.style.gridTemplateColumns = cols.join(' ');
+
+    document.getElementById('layout-tree-btn').classList.toggle('active', showTree);
+    document.getElementById('layout-tree-btn').disabled = !hasProject;
+    document.getElementById('layout-editor-btn').classList.toggle('active', !editorHidden);
+    document.getElementById('layout-preview-btn').classList.toggle('active', !previewHidden);
+    
+    setTimeout(fitDevice, 50); 
+  }
+  document.getElementById('layout-tree-btn').addEventListener('click', ()=>{ if (!hasProject){ toast('No project loaded — import a repo or open a local folder first'); return; } treeManuallyHidden = !treeManuallyHidden; updateLayout(); });
+  document.getElementById('layout-editor-btn').addEventListener('click', ()=>{ editorHidden = !editorHidden; updateLayout(); });
+  document.getElementById('layout-preview-btn').addEventListener('click', ()=>{ previewHidden = !previewHidden; updateLayout(); });
+  treeCloseBtn.addEventListener('click', ()=>{ treeManuallyHidden = true; updateLayout(); });
+  updateLayout();
+
+  const ghConnectBtn = document.getElementById('gh-connect-btn'); const ghConnected = document.getElementById('gh-connected'); const ghAvatar = document.getElementById('gh-avatar'); const ghUsername = document.getElementById('gh-username'); const ghPushBtn = document.getElementById('gh-push-btn');
+  async function checkGithubConnection(){
+    const token = localStorage.getItem(LS.ghToken); if (!token){ ghConnectBtn.style.display = 'inline-flex'; ghConnected.style.display = 'none'; return; }
+    try { const user = await ghApiFetch('user', token); ghAvatar.textContent = (user.login || '?')[0].toUpperCase(); ghUsername.textContent = '@' + user.login; ghConnectBtn.style.display = 'none'; ghConnected.style.display = 'inline-flex'; } catch(e){ localStorage.removeItem(LS.ghToken); ghConnectBtn.style.display = 'inline-flex'; ghConnected.style.display = 'none'; }
+  }
+  ghConnectBtn.addEventListener('click', ()=> openModal('modal-github')); ghPushBtn.addEventListener('click', pushOrSaveChanges); checkGithubConnection();
+
+  const GITHUB_OAUTH_CLIENT_ID = '';
+  document.getElementById('gh-oauth-btn').addEventListener('click', ()=>{ if (!GITHUB_OAUTH_CLIENT_ID){ toast('OAuth isn\'t configured on this deployment yet — use the token field below for now'); return; } const params = new URLSearchParams({ client_id: GITHUB_OAUTH_CLIENT_ID, scope: 'repo' }); window.location.href = 'https://github.com/login/oauth/authorize?' + params.toString(); });
+  async function handleOAuthCallback(){ const params = new URLSearchParams(window.location.search); const code = params.get('code'); if (!code) return; history.replaceState(null, '', window.location.origin + window.location.pathname + window.location.hash); toast('Finishing GitHub sign-in…'); try { const res = await fetch('/api/github-oauth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) }); const data = await res.json(); if (!res.ok || !data.access_token) throw new Error(data.error || 'Sign-in failed'); localStorage.setItem(LS.ghToken, data.access_token); await checkGithubConnection(); toast('Signed in with GitHub', 'ok'); closeModal('modal-github'); } catch(e){ toast('GitHub sign-in failed: ' + e.message, 'err'); } }
+  handleOAuthCallback();
+
+  async function pushOrSaveChanges(){ if (!currentTreeData){ toast('No project loaded'); return; } if (currentTreeData.fileSource.kind === 'local') return saveLocalChanges(); return pushChanges(); }
+  async function pushChanges(){
+    if (editedFiles.size === 0){ toast('Nothing to push — no unsaved changes'); return; } const token = localStorage.getItem(LS.ghToken); if (!token){ toast('Connect GitHub first'); openModal('modal-github'); return; }
+    const { owner, repo, branch } = currentTreeData.fileSource; const total = editedFiles.size; toast(`Pushing ${total} file${total > 1 ? 's' : ''}…`); ghPushBtn.disabled = true; const originalPushLabel = ghPushBtn.textContent; ghPushBtn.textContent = '···';
+    let pushedCount = 0; const failures = [];
+    for (const [path, content] of [...editedFiles]){
+      const apiPath = path.split('/').map(encodeURIComponent).join('/');
+      try { const getRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${apiPath}?ref=${branch}`, { headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' } }); if (!getRes.ok) throw new Error(`couldn't read current state of ${path} (${getRes.status})`); const { sha } = await getRes.json(); const putRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${apiPath}`, { method: 'PUT', headers: { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' }, body: JSON.stringify({ message: `Update ${path} via Wrenna`, content: btoa(unescape(encodeURIComponent(content))), sha, branch }) }); if (!putRes.ok){ const errBody = await putRes.json().catch(()=>({})); throw new Error(errBody.message || `push rejected (${putRes.status})`); } editedFiles.delete(path); clearDirty(path); pushedCount++; } catch(e){ failures.push(`${path}: ${e.message}`); }
+    }
+    ghPushBtn.disabled = false; ghPushBtn.textContent = originalPushLabel; setUnsaved(editedFiles.size > 0);
+    if (failures.length){ toast(`Pushed ${pushedCount}/${total} — ${failures.length} failed`, 'err'); failures.forEach(f => toast(f, 'err')); } else { toast(`Pushed ${pushedCount} commit${pushedCount > 1 ? 's' : ''} to ${branch}`, 'ok'); }
+  }
+
+  async function walkLocalDirectory(dirHandle, dirHandles, prefix){ const filePaths = new Set(); for await (const [name, handle] of dirHandle.entries()){ if (name === 'node_modules' || name === '.git' || name === 'dist' || name === 'build') continue; const path = prefix ? prefix + '/' + name : name; if (handle.kind === 'file'){ filePaths.add(path); dirHandles.set(path, handle); } else if (handle.kind === 'directory'){ const nested = await walkLocalDirectory(handle, dirHandles, path); for (const p of nested) filePaths.add(p); } } return filePaths; }
+  document.getElementById('open-local-folder-btn').addEventListener('click', async ()=>{
+    if (!window.showDirectoryPicker){ toast('Local folder access needs Chrome or Edge on desktop', 'err'); return; }
+    toast('Opening folder picker…'); try { const dirHandle = await window.showDirectoryPicker(); toast('Reading folder…'); const dirHandles = new Map(); const filePaths = await walkLocalDirectory(dirHandle, dirHandles, ''); if (filePaths.size === 0){ toast('That folder looks empty', 'err'); return; } if (filePaths.size > MAX_FILES){ toast(`${filePaths.size} files found — only using the first ${MAX_FILES}`, 'err'); }
+      const fileSource = makeLocalSource(dirHandles, dirHandle.name); const finalDoc = await rebuildProject(fileSource, filePaths); preview.srcdoc = finalDoc; previewEmpty.style.display = 'none'; previewDevice.style.display = 'flex'; fitDevice(); previewUrl.textContent = dirHandle.name; projectName.textContent = dirHandle.name; setUnsaved(false); renderFileTree(fileSource, filePaths); closeModal('modal-github'); toast(`Opened "${dirHandle.name}"`, 'ok');
+    } catch(e){ if (e.name === 'AbortError'){ toast('Folder picker closed without choosing a folder'); return; } console.error(e); toast('Could not open that folder: ' + e.message, 'err'); }
+  });
+  async function saveLocalChanges(){
+    if (editedFiles.size === 0){ toast('Nothing to save — no unsaved changes'); return; } const { dirHandles } = currentTreeData.fileSource; const total = editedFiles.size; ghPushBtn.disabled = true; const originalLabel = ghPushBtn.textContent; ghPushBtn.textContent = '···';
+    let savedCount = 0; const failures = [];
+    for (const [path, content] of [...editedFiles]){ try { const handle = dirHandles.get(path); if (!handle) throw new Error('file handle not found'); const writable = await handle.createWritable(); await writable.write(content); await writable.close(); editedFiles.delete(path); clearDirty(path); savedCount++; } catch(e){ failures.push(`${path}: ${e.message}`); } }
+    ghPushBtn.disabled = false; ghPushBtn.textContent = originalLabel; setUnsaved(editedFiles.size > 0);
+    if (failures.length){ toast(`Saved ${savedCount}/${total} — ${failures.length} failed`, 'err'); failures.forEach(f => toast(f, 'err')); } else { toast(`Saved ${savedCount} file${savedCount > 1 ? 's' : ''} to disk`, 'ok'); }
+  }
+  
+  console.log("Wrenna Engine Ready.");
+})();
