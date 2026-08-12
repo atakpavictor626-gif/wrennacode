@@ -1,8 +1,7 @@
 (function(){
   'use strict';
-  console.log("Wrenna Engine Starting v4 (External JS)...");
+  console.log("Wrenna Engine Starting v5 (Activity Bar Layout)...");
 
-  // Clean, standard JS code. No HTML parser evasion needed in external JS files!
   const closeScriptTag = '</script>';
   const scriptSrcRegex = /<script((?:(?!type=)[^>])*)src=["']([^"']+)["']([^>]*)>\s*<\/script>/gi;
   const moduleScriptRegex = /<script\b[^>]*type=["']module["'][^>]*>\s*<\/script>/i;
@@ -31,8 +30,7 @@
   const editorTabs = document.getElementById('editor-tabs');
   const workspace = document.getElementById('workspace');
 
-  // CHANGED LS KEYS TO V4 TO PREVENT OLD DRAFTS FROM LOADING
-  const LS = { draft: 'wrenna_v4_draft', runs: 'wrenna_v4_run_count', fuel: 'wrenna_v4_fuel_passes', pro: 'wrenna_v4_pro', ghToken: 'wrenna_v4_gh_token' };
+  const LS = { draft: 'wrenna_v5_draft', runs: 'wrenna_v5_run_count', fuel: 'wrenna_v5_fuel_passes', pro: 'wrenna_v5_pro', ghToken: 'wrenna_v5_gh_token' };
   let currentFilePath = null;
   let editedFiles = new Map();
 
@@ -50,16 +48,21 @@
     const fh = previewFrame.clientHeight - 32;
     if (fw <= 0 || fh <= 0) return;
 
+    // Reset dimensions to recalculate based on aspect ratio
+    previewDevice.style.width = '';
+    previewDevice.style.height = '';
+
     let ratio = 16/9;
     if (previewDevice.classList.contains('mobile')) ratio = 9/19.5;
     if (previewDevice.classList.contains('tablet')) ratio = 3/4;
 
-    let dw = fw;
-    let dh = dw / ratio;
+    // Try fitting by height first for vertical devices, or width for horizontal
+    let dh = fh;
+    let dw = dh * ratio;
 
-    if (dh > fh) {
-      dh = fh;
-      dw = dh * ratio;
+    if (dw > fw) {
+      dw = fw;
+      dh = dw / ratio;
     }
 
     previewDevice.style.width = dw + 'px';
@@ -89,6 +92,15 @@
     });
   });
   document.getElementById('pro-btn').addEventListener('click', ()=> openModal('modal-pro'));
+
+  // Focus Mode Logic (Maximize Panes)
+  document.querySelectorAll('.focus-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.focus;
+      workspace.classList.toggle(`focus-${target}`);
+      setTimeout(fitDevice, 50);
+    });
+  });
 
   const PRO_CHECKOUT_URLS = { annual: '', onetime: '' };
   let selectedPlan = 'annual';
@@ -411,21 +423,17 @@
 
     document.getElementById('layout-tree-btn').classList.toggle('active', showTree);
     document.getElementById('layout-tree-btn').disabled = !hasProject;
-    document.getElementById('layout-editor-btn').classList.toggle('active', !editorHidden);
-    document.getElementById('layout-preview-btn').classList.toggle('active', !previewHidden);
     
     setTimeout(fitDevice, 50); 
   }
   document.getElementById('layout-tree-btn').addEventListener('click', ()=>{ if (!hasProject){ toast('No project loaded — import a repo or open a local folder first'); return; } treeManuallyHidden = !treeManuallyHidden; updateLayout(); });
-  document.getElementById('layout-editor-btn').addEventListener('click', ()=>{ editorHidden = !editorHidden; updateLayout(); });
-  document.getElementById('layout-preview-btn').addEventListener('click', ()=>{ previewHidden = !previewHidden; updateLayout(); });
   treeCloseBtn.addEventListener('click', ()=>{ treeManuallyHidden = true; updateLayout(); });
   updateLayout();
 
-  const ghConnectBtn = document.getElementById('gh-connect-btn'); const ghConnected = document.getElementById('gh-connected'); const ghAvatar = document.getElementById('gh-avatar'); const ghUsername = document.getElementById('gh-username'); const ghPushBtn = document.getElementById('gh-push-btn');
+  const ghConnectBtn = document.getElementById('gh-connect-btn'); const ghConnected = document.getElementById('gh-connected'); const ghAvatar = document.getElementById('gh-avatar'); const ghPushBtn = document.getElementById('gh-push-btn');
   async function checkGithubConnection(){
-    const token = localStorage.getItem(LS.ghToken); if (!token){ ghConnectBtn.style.display = 'inline-flex'; ghConnected.style.display = 'none'; return; }
-    try { const user = await ghApiFetch('user', token); ghAvatar.textContent = (user.login || '?')[0].toUpperCase(); ghUsername.textContent = '@' + user.login; ghConnectBtn.style.display = 'none'; ghConnected.style.display = 'inline-flex'; } catch(e){ localStorage.removeItem(LS.ghToken); ghConnectBtn.style.display = 'inline-flex'; ghConnected.style.display = 'none'; }
+    const token = localStorage.getItem(LS.ghToken); if (!token){ ghConnectBtn.style.display = 'grid'; ghConnected.style.display = 'none'; return; }
+    try { const user = await ghApiFetch('user', token); ghAvatar.textContent = (user.login || '?')[0].toUpperCase(); ghConnectBtn.style.display = 'none'; ghConnected.style.display = 'flex'; } catch(e){ localStorage.removeItem(LS.ghToken); ghConnectBtn.style.display = 'grid'; ghConnected.style.display = 'none'; }
   }
   ghConnectBtn.addEventListener('click', ()=> openModal('modal-github')); ghPushBtn.addEventListener('click', pushOrSaveChanges); checkGithubConnection();
 
