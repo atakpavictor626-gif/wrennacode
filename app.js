@@ -1,11 +1,13 @@
 (function(){
   'use strict';
-  console.log("Wrenna Engine Starting v5 (Activity Bar Layout)...");
+  console.log("Wrenna Engine Starting v6 (Activity Bar & Spec-Accurate)...");
 
+  // Clean Regex definitions (safe in external JS)
   const closeScriptTag = '</script>';
   const scriptSrcRegex = /<script((?:(?!type=)[^>])*)src=["']([^"']+)["']([^>]*)>\s*<\/script>/gi;
   const moduleScriptRegex = /<script\b[^>]*type=["']module["'][^>]*>\s*<\/script>/i;
 
+  // DOM References
   const codeInput = document.getElementById('code-input');
   const codeHighlight = document.getElementById('code-highlight');
   const runBtn = document.getElementById('run-btn');
@@ -30,7 +32,8 @@
   const editorTabs = document.getElementById('editor-tabs');
   const workspace = document.getElementById('workspace');
 
-  const LS = { draft: 'wrenna_v5_draft', runs: 'wrenna_v5_run_count', fuel: 'wrenna_v5_fuel_passes', pro: 'wrenna_v5_pro', ghToken: 'wrenna_v5_gh_token' };
+  // LS Keys (v6 to prevent old drafts from loading)
+  const LS = { draft: 'wrenna_v6_draft', runs: 'wrenna_v6_run_count', fuel: 'wrenna_v6_fuel_passes', pro: 'wrenna_v6_pro', ghToken: 'wrenna_v6_gh_token' };
   let currentFilePath = null;
   let editedFiles = new Map();
 
@@ -44,29 +47,11 @@
 
   function fitDevice() {
     if (!previewFrame || !previewDevice) return;
-    const fw = previewFrame.clientWidth - 32; 
-    const fh = previewFrame.clientHeight - 32;
-    if (fw <= 0 || fh <= 0) return;
-
-    // Reset dimensions to recalculate based on aspect ratio
+    // Clear inline styles so CSS aspect-ratio and max-width/height can control sizing natively
     previewDevice.style.width = '';
     previewDevice.style.height = '';
-
-    let ratio = 16/9;
-    if (previewDevice.classList.contains('mobile')) ratio = 9/19.5;
-    if (previewDevice.classList.contains('tablet')) ratio = 3/4;
-
-    // Try fitting by height first for vertical devices, or width for horizontal
-    let dh = fh;
-    let dw = dh * ratio;
-
-    if (dw > fw) {
-      dw = fw;
-      dh = dw / ratio;
-    }
-
-    previewDevice.style.width = dw + 'px';
-    previewDevice.style.height = dh + 'px';
+    // Force a reflow to ensure CSS recalculates properly in some browsers
+    void previewFrame.offsetWidth; 
   }
   window.addEventListener('resize', fitDevice);
 
@@ -76,10 +61,32 @@
   document.querySelectorAll('.modal-overlay').forEach(ov=> ov.addEventListener('click', e=>{ if (e.target === ov) ov.classList.remove('open'); }));
   document.addEventListener('keydown', e=>{ if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(ov=> ov.classList.remove('open')); });
 
+  // Sidebar / Activity Bar Buttons
   document.getElementById('gh-import-btn').addEventListener('click', ()=> openModal('modal-github'));
   document.getElementById('share-btn').addEventListener('click', openShareModal);
   document.getElementById('mobile-share-btn').addEventListener('click', openShareModal);
+  document.getElementById('pro-btn').addEventListener('click', ()=> openModal('modal-pro'));
 
+  // Focus Mode Logic (Maximize Panes)
+  document.querySelectorAll('.focus-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.focus; // 'editor' or 'preview'
+      const isFocused = workspace.classList.contains(`focus-${target}`);
+      
+      // Clear both focus states first
+      workspace.classList.remove('focus-editor', 'focus-preview');
+      
+      // If it wasn't focused before, apply the new focus state
+      if (!isFocused) {
+        workspace.classList.add(`focus-${target}`);
+      }
+      
+      // Recalculate device size after layout shift
+      setTimeout(fitDevice, 50);
+    });
+  });
+
+  // Mobile Tabs
   document.querySelectorAll('.mtab-btn').forEach(btn=>{
     if (btn.id === 'mobile-share-btn') return;
     btn.addEventListener('click', ()=>{
@@ -91,17 +98,8 @@
       setTimeout(fitDevice, 50); 
     });
   });
-  document.getElementById('pro-btn').addEventListener('click', ()=> openModal('modal-pro'));
 
-  // Focus Mode Logic (Maximize Panes)
-  document.querySelectorAll('.focus-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const target = btn.dataset.focus;
-      workspace.classList.toggle(`focus-${target}`);
-      setTimeout(fitDevice, 50);
-    });
-  });
-
+  // Pro Checkout
   const PRO_CHECKOUT_URLS = { annual: '', onetime: '' };
   let selectedPlan = 'annual';
   function selectPlan(plan){ selectedPlan = plan; document.querySelectorAll('.pro-plan').forEach(el=> el.classList.toggle('selected', el.dataset.plan === plan)); }
@@ -113,6 +111,7 @@
     window.location.href = url;
   });
 
+  // Syntax Highlighting
   function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function highlight(code){
     let escaped = escapeHtml(code);
@@ -124,6 +123,7 @@
   }
   function syncHighlight(){ codeHighlight.innerHTML = highlight(codeInput.value) + '\n'; charCount.textContent = codeInput.value.length.toLocaleString() + ' chars'; }
   function syncScroll(){ codeHighlight.scrollTop = codeInput.scrollTop; codeHighlight.scrollLeft = codeInput.scrollLeft; }
+  
   codeInput.addEventListener('input', ()=>{
     syncHighlight();
     clearTimeout(codeInput._draftTimer);
@@ -140,6 +140,7 @@
 
   function setUnsaved(v){ projectState.textContent = v ? '· unsaved' : ''; projectState.classList.toggle('unsaved', v); }
 
+  // Drag & Drop
   const codeSurface = document.querySelector('.code-surface');
   ['dragenter','dragover'].forEach(evt=> codeSurface.addEventListener(evt, e=>{ e.preventDefault(); codeSurface.style.outline = '2px dashed var(--wren-soft)'; }));
   ['dragleave','drop'].forEach(evt=> codeSurface.addEventListener(evt, e=>{ e.preventDefault(); codeSurface.style.outline = 'none'; }));
@@ -150,6 +151,7 @@
     reader.readAsText(file);
   });
 
+  // Build HTML Doc for Preview
   function buildDoc(code){
     const trimmed = code.trim();
     if (/^<!DOCTYPE|<html/i.test(trimmed)) return code;
@@ -166,6 +168,7 @@
     previewEmpty.style.display = 'none'; previewDevice.style.display = 'flex'; preview.srcdoc = buildDoc(codeInput.value); fitDevice(); previewUrl.textContent = 'localhost:7331';
   }
 
+  // Ad Gate Logic
   let runCount = parseInt(localStorage.getItem(LS.runs) || '0', 10);
   let fuelPasses = parseInt(localStorage.getItem(LS.fuel) || '0', 10);
   let isPro = localStorage.getItem(LS.pro) === 'true';
@@ -187,6 +190,7 @@
   function doRun(){ editorStatus.classList.add('building'); buildState.textContent = 'bundling…'; renderPreview().catch(e=>{ console.error(e); toast('Run failed: ' + e.message, 'err'); }).finally(()=>{ editorStatus.classList.remove('building'); buildState.textContent = 'built · ready'; runCount++; localStorage.setItem(LS.runs, runCount); }); }
   runBtn.addEventListener('click', attemptRun);
 
+  // Live Preview Toggle
   document.getElementById('live-toggle-btn').addEventListener('click', function(){ liveEnabled = !liveEnabled; this.classList.toggle('is-off', !liveEnabled); this.setAttribute('aria-pressed', String(liveEnabled)); toast(liveEnabled ? 'Live preview on' : 'Live preview off — use Run to update manually'); });
   let liveEnabled = true; let liveGeneration = 0;
   async function livePreviewRefresh(){
@@ -203,6 +207,7 @@
   gateSkipBtn.addEventListener('click', ()=>{ closeModal('modal-adgate'); doRun(); });
   gateVideoBtn.addEventListener('click', ()=>{ toast('Rewarded video would play here (SDK not wired up yet)'); fuelPasses += 10; localStorage.setItem(LS.fuel, fuelPasses); toast('+10 free runs added', 'ok'); closeModal('modal-adgate'); doRun(); });
 
+  // Viewport Toggle (Spec-Accurate CSS takes over)
   function setViewport(mode, btn){
     document.querySelectorAll('[data-viewport]').forEach(b=> b.classList.remove('active'));
     btn.classList.add('active');
@@ -220,6 +225,7 @@
 
   document.getElementById('banner-watch-btn').addEventListener('click', ()=> openModal('modal-adgate'));
 
+  // Share Logic
   function openShareModal(){
     if (!codeInput.value.trim()){ toast('Write or drop some code first'); return; }
     const compressed = LZString.compressToEncodedURIComponent(codeInput.value);
@@ -241,6 +247,7 @@
     window.open(url, '_blank');
   });
 
+  // Load from URL Hash
   function loadFromHash(){
     const hash = window.location.hash;
     if (hash.startsWith('#doc=')){ try { const d = LZString.decompressFromEncodedURIComponent(hash.slice(5)); if (d){ preview.srcdoc = d; previewEmpty.style.display = 'none'; previewDevice.style.display = 'flex'; fitDevice(); previewUrl.textContent = 'shared preview'; toast('Loaded shared preview', 'ok'); return true; } } catch(e){ console.error(e); } }
@@ -252,6 +259,7 @@
   if (codeInput.value.trim()) renderPreview();
   setTimeout(fitDevice, 100); 
 
+  // GitHub Engine
   const MAX_FILES = 400;
   function parseRepoInput(input){
     input = input.trim().replace(/\.git$/, '');
@@ -367,6 +375,7 @@
     } catch(err){ console.error(err); ghLog(err.message, 'err'); ghLogTitle.textContent = 'failed'; toast(err.message, 'err'); }
   });
 
+  // File Tree Logic
   let currentTreeData = null;
   function pathsToTree(paths){ const root = { name: '', children: {}, isFile: false }; for (const p of paths){ const parts = p.split('/'); let node = root; parts.forEach((part, i)=>{ const isFile = i === parts.length - 1; if (!node.children[part]) node.children[part] = { name: part, children: {}, isFile, fullPath: parts.slice(0, i+1).join('/') }; node = node.children[part]; }); } return root; }
   function fileIconSvg(){ return '<svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>'; }
@@ -405,31 +414,20 @@
   }
   treeSearch.addEventListener('input', ()=>{ const q = treeSearch.value.toLowerCase(); treeRoot.querySelectorAll('.file-row').forEach(row=>{ const path = (row.dataset.path || '').toLowerCase(); const match = !q || path.includes(q); row.closest('li').style.display = match ? '' : 'none'; if (match && q){ let el = row.closest('ul') ? row.closest('ul').closest('li.folder') : null; while (el){ el.classList.remove('collapsed'); el.classList.add('expanded'); el = el.parentElement ? el.parentElement.closest('li.folder') : null; } } }); });
 
-  const editorPaneEl = document.getElementById('editor-pane'); const previewPaneEl = document.getElementById('preview-pane');
-  let hasProject = false; let treeManuallyHidden = false; let editorHidden = false; let previewHidden = false;
+  // Layout Toggle (File Tree)
+  let hasProject = false; let treeManuallyHidden = false;
   function updateLayout(){
     const showTree = hasProject && !treeManuallyHidden;
-    if (editorHidden && previewHidden && !showTree) editorHidden = false;
     workspace.classList.toggle('has-tree', showTree);
-    if (!showTree) filetree.style.display = 'none'; else filetree.style.display = 'flex';
-
-    editorPaneEl.style.display = editorHidden ? 'none' : 'flex';
-    previewPaneEl.style.display = previewHidden ? 'none' : 'flex';
-
-    const cols = [];
-    if (!editorHidden) cols.push('minmax(0, 1.6fr)');
-    if (!previewHidden) cols.push('minmax(0, 1fr)');
-    workspace.style.gridTemplateColumns = cols.join(' ');
-
-    document.getElementById('layout-tree-btn').classList.toggle('active', showTree);
-    document.getElementById('layout-tree-btn').disabled = !hasProject;
-    
+    filetree.style.display = showTree ? 'flex' : 'none';
+    document.getElementById('layout-tree-btn')?.classList.toggle('active', showTree);
     setTimeout(fitDevice, 50); 
   }
   document.getElementById('layout-tree-btn').addEventListener('click', ()=>{ if (!hasProject){ toast('No project loaded — import a repo or open a local folder first'); return; } treeManuallyHidden = !treeManuallyHidden; updateLayout(); });
   treeCloseBtn.addEventListener('click', ()=>{ treeManuallyHidden = true; updateLayout(); });
   updateLayout();
 
+  // GitHub Connection State
   const ghConnectBtn = document.getElementById('gh-connect-btn'); const ghConnected = document.getElementById('gh-connected'); const ghAvatar = document.getElementById('gh-avatar'); const ghPushBtn = document.getElementById('gh-push-btn');
   async function checkGithubConnection(){
     const token = localStorage.getItem(LS.ghToken); if (!token){ ghConnectBtn.style.display = 'grid'; ghConnected.style.display = 'none'; return; }
@@ -437,11 +435,13 @@
   }
   ghConnectBtn.addEventListener('click', ()=> openModal('modal-github')); ghPushBtn.addEventListener('click', pushOrSaveChanges); checkGithubConnection();
 
+  // GitHub OAuth
   const GITHUB_OAUTH_CLIENT_ID = '';
   document.getElementById('gh-oauth-btn').addEventListener('click', ()=>{ if (!GITHUB_OAUTH_CLIENT_ID){ toast('OAuth isn\'t configured on this deployment yet — use the token field below for now'); return; } const params = new URLSearchParams({ client_id: GITHUB_OAUTH_CLIENT_ID, scope: 'repo' }); window.location.href = 'https://github.com/login/oauth/authorize?' + params.toString(); });
   async function handleOAuthCallback(){ const params = new URLSearchParams(window.location.search); const code = params.get('code'); if (!code) return; history.replaceState(null, '', window.location.origin + window.location.pathname + window.location.hash); toast('Finishing GitHub sign-in…'); try { const res = await fetch('/api/github-oauth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) }); const data = await res.json(); if (!res.ok || !data.access_token) throw new Error(data.error || 'Sign-in failed'); localStorage.setItem(LS.ghToken, data.access_token); await checkGithubConnection(); toast('Signed in with GitHub', 'ok'); closeModal('modal-github'); } catch(e){ toast('GitHub sign-in failed: ' + e.message, 'err'); } }
   handleOAuthCallback();
 
+  // Push to GitHub / Save Locally
   async function pushOrSaveChanges(){ if (!currentTreeData){ toast('No project loaded'); return; } if (currentTreeData.fileSource.kind === 'local') return saveLocalChanges(); return pushChanges(); }
   async function pushChanges(){
     if (editedFiles.size === 0){ toast('Nothing to push — no unsaved changes'); return; } const token = localStorage.getItem(LS.ghToken); if (!token){ toast('Connect GitHub first'); openModal('modal-github'); return; }
