@@ -13,11 +13,10 @@
 </head>
 <body>
 
-<!-- VERTICAL ACTIVITY BAR ISLAND -->
 <nav class="sidebar">
-  <div class="sidebar-brand">
-    <svg class="brand-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19 L9 6 L13 14 L17 8 L20 17"/></svg>
-  </div>
+  <button class="sidebar-brand" id="layout-tree-btn" title="Toggle Explorer">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19 L9 6 L13 14 L17 8 L20 17"/></svg>
+  </button>
   
   <div class="sidebar-group">
     <button class="icon-btn" id="gh-import-btn" title="Import a GitHub repo">
@@ -51,7 +50,17 @@
 <main class="workspace" id="workspace">
   <aside class="filetree" id="filetree">
     <div class="tree-header">
-      <div class="tree-header-label">explorer</div>
+      <div class="tree-header-label">
+        <span>explorer</span>
+        <div class="tree-actions">
+          <button class="icon-btn-sm" id="new-file-btn" title="New File">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M12 12v4M10 14h4"/></svg>
+          </button>
+          <button class="icon-btn-sm" id="new-folder-btn" title="New Folder">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/><path d="M12 11v4M10 13h4"/></svg>
+          </button>
+        </div>
+      </div>
       <input type="search" class="tree-search" id="tree-search" placeholder="filter paths…" aria-label="Filter files">
     </div>
     <ul class="tree" id="tree-root"><div class="active-indicator" id="active-indicator"></div></ul>
@@ -63,7 +72,9 @@
       <div class="editor-tabs" id="editor-tabs" style="display:none;"></div>
       <div class="pane-actions">
         <span class="project-meta"><span class="project-name" id="project-name">untitled</span> <span class="project-state" id="project-state"></span></span>
-        <button class="icon-btn-sm" id="layout-tree-btn" title="Toggle Files"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg></button>
+        <button class="icon-btn-sm ai-btn" id="open-ai-btn" title="Ask Wrenna AI">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </button>
         <button class="icon-btn-sm focus-btn" data-focus="editor" title="Maximize Editor"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
       </div>
     </div>
@@ -117,6 +128,27 @@
   <button class="mtab-btn" data-panel="preview">Preview</button>
   <button class="mtab-btn" id="mobile-share-btn">Share</button>
 </nav>
+
+<div class="modal-overlay" id="modal-ai">
+  <div class="modal" style="max-width: 600px;">
+    <div class="modal-head">
+      <div class="modal-eyebrow">wrenna ai</div>
+      <h2 class="modal-title">Refactor, explain, or generate.</h2>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>prompt</label>
+        <input type="text" id="ai-prompt-input" placeholder="e.g., Add Tailwind classes and make it a dark mode button">
+      </div>
+      <div id="ai-response-area" class="import-log" style="min-height: 120px; white-space: pre-wrap; color: var(--wren-soft);">AI response will appear here...</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-modal-close>close</button>
+      <button class="btn btn-primary" id="ai-apply-btn" disabled>Apply to Editor</button>
+      <button class="btn btn-run" id="ai-generate-btn">Generate</button>
+    </div>
+  </div>
+</div>
 
 <div class="modal-overlay" id="modal-adgate"><div class="modal"><div class="modal-head"><div class="modal-eyebrow">a brief pause</div><h2 class="modal-title">15 seconds keeps Wrenna free.</h2></div><div class="modal-body"><p style="font-family: var(--font-display); font-style: italic; font-size: 15px; color: var(--paper); line-height: 1.55; margin-bottom: 1rem;">Wrenna doesn't charge, doesn't track, doesn't sell your code. The trade for all of that is one short sponsor message before this run.</p><div style="font-size: 11.5px; color: var(--text-mute-ink); padding: 0.55rem 0.75rem; background: rgba(0,0,0,0.3); border-radius: 8px; border-left: 2px solid var(--wren-soft); margin-bottom: 1rem; font-family: var(--font-mono);">free tier · sponsor slot · pro removes this entirely</div><div style="border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 0.75rem; display: flex; gap: 0.75rem; align-items: center; background: rgba(0,0,0,0.2);"><div style="width: 38px; height: 38px; background: var(--paper); border-radius: 4px; display: grid; place-items: center; color: var(--ink); font-family: var(--font-display); font-style: italic; font-weight: 500; font-size: 18px;">f</div><div><div style="font-weight: 500; font-size: 13px; color: var(--paper);">Your Sponsor Here</div><div style="font-size: 11.5px; color: var(--text-mute-ink);">this slot funds Wrenna's free tier</div></div></div></div><div class="modal-foot"><button class="btn" id="gate-skip-btn" style="visibility:hidden;">skip →</button><button class="btn btn-primary" id="gate-video-btn">watch 30s → +10 free runs</button></div></div></div>
 
