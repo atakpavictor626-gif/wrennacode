@@ -1,13 +1,11 @@
 (function(){
   'use strict';
-  console.log("Wrenna Engine Starting v6 (Activity Bar & Spec-Accurate)...");
+  console.log("Wrenna Engine Starting v8 (DeepSeek SLM Integration)...");
 
-  // Clean Regex definitions (safe in external JS)
   const closeScriptTag = '</script>';
   const scriptSrcRegex = /<script((?:(?!type=)[^>])*)src=["']([^"']+)["']([^>]*)>\s*<\/script>/gi;
   const moduleScriptRegex = /<script\b[^>]*type=["']module["'][^>]*>\s*<\/script>/i;
 
-  // DOM References
   const codeInput = document.getElementById('code-input');
   const codeHighlight = document.getElementById('code-highlight');
   const runBtn = document.getElementById('run-btn');
@@ -28,12 +26,13 @@
   const treeRoot = document.getElementById('tree-root');
   const treeSearch = document.getElementById('tree-search');
   const treeCloseBtn = document.getElementById('tree-close-btn');
+  const newFileBtn = document.getElementById('new-file-btn');
+  const newFolderBtn = document.getElementById('new-folder-btn');
   function getActiveIndicator(){ return document.getElementById('active-indicator'); }
   const editorTabs = document.getElementById('editor-tabs');
   const workspace = document.getElementById('workspace');
 
-  // LS Keys (v6 to prevent old drafts from loading)
-  const LS = { draft: 'wrenna_v6_draft', runs: 'wrenna_v6_run_count', fuel: 'wrenna_v6_fuel_passes', pro: 'wrenna_v6_pro', ghToken: 'wrenna_v6_gh_token' };
+  const LS = { draft: 'wrenna_v8_draft', runs: 'wrenna_v8_run_count', fuel: 'wrenna_v8_fuel_passes', pro: 'wrenna_v8_pro', ghToken: 'wrenna_v8_gh_token', aiUses: 'wrenna_v8_ai_uses' };
   let currentFilePath = null;
   let editedFiles = new Map();
 
@@ -47,11 +46,22 @@
 
   function fitDevice() {
     if (!previewFrame || !previewDevice) return;
-    // Clear inline styles so CSS aspect-ratio and max-width/height can control sizing natively
-    previewDevice.style.width = '';
-    previewDevice.style.height = '';
-    // Force a reflow to ensure CSS recalculates properly in some browsers
-    void previewFrame.offsetWidth; 
+    const frameW = previewDevice.clientWidth;
+    const frameH = previewDevice.clientHeight;
+    if (frameW <= 0 || frameH <= 0) return;
+
+    let targetW = 1440, targetH = 900; 
+    if (previewDevice.classList.contains('mobile')) { targetW = 412; targetH = 891; }
+    if (previewDevice.classList.contains('tablet')) { targetW = 1024; targetH = 1366; }
+
+    const scale = Math.min(frameW / targetW, frameH / targetH);
+    const iframe = preview.querySelector('iframe');
+    if (iframe) {
+      iframe.style.width = targetW + 'px';
+      iframe.style.height = targetH + 'px';
+      iframe.style.transform = `scale(${scale})`;
+      iframe.style.transformOrigin = 'top left';
+    }
   }
   window.addEventListener('resize', fitDevice);
 
@@ -61,32 +71,21 @@
   document.querySelectorAll('.modal-overlay').forEach(ov=> ov.addEventListener('click', e=>{ if (e.target === ov) ov.classList.remove('open'); }));
   document.addEventListener('keydown', e=>{ if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(ov=> ov.classList.remove('open')); });
 
-  // Sidebar / Activity Bar Buttons
   document.getElementById('gh-import-btn').addEventListener('click', ()=> openModal('modal-github'));
   document.getElementById('share-btn').addEventListener('click', openShareModal);
   document.getElementById('mobile-share-btn').addEventListener('click', openShareModal);
   document.getElementById('pro-btn').addEventListener('click', ()=> openModal('modal-pro'));
 
-  // Focus Mode Logic (Maximize Panes)
   document.querySelectorAll('.focus-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const target = btn.dataset.focus; // 'editor' or 'preview'
+      const target = btn.dataset.focus;
       const isFocused = workspace.classList.contains(`focus-${target}`);
-      
-      // Clear both focus states first
       workspace.classList.remove('focus-editor', 'focus-preview');
-      
-      // If it wasn't focused before, apply the new focus state
-      if (!isFocused) {
-        workspace.classList.add(`focus-${target}`);
-      }
-      
-      // Recalculate device size after layout shift
+      if (!isFocused) workspace.classList.add(`focus-${target}`);
       setTimeout(fitDevice, 50);
     });
   });
 
-  // Mobile Tabs
   document.querySelectorAll('.mtab-btn').forEach(btn=>{
     if (btn.id === 'mobile-share-btn') return;
     btn.addEventListener('click', ()=>{
@@ -99,7 +98,6 @@
     });
   });
 
-  // Pro Checkout
   const PRO_CHECKOUT_URLS = { annual: '', onetime: '' };
   let selectedPlan = 'annual';
   function selectPlan(plan){ selectedPlan = plan; document.querySelectorAll('.pro-plan').forEach(el=> el.classList.toggle('selected', el.dataset.plan === plan)); }
@@ -111,7 +109,84 @@
     window.location.href = url;
   });
 
-  // Syntax Highlighting
+  // === Wrenna AI Logic ===
+  const aiBtn = document.getElementById('open-ai-btn');
+  const aiPromptInput = document.getElementById('ai-prompt-input');
+  const aiResponseArea = document.getElementById('ai-response-area');
+  const aiGenerateBtn = document.getElementById('ai-generate-btn');
+  const aiApplyBtn = document.getElementById('ai-apply-btn');
+  let lastAiResponse = '';
+  let isPro = localStorage.getItem(LS.pro) === 'true';
+
+  aiBtn.addEventListener('click', () => {
+    if (!codeInput.value.trim()) { toast('Write some code first!'); return; }
+    openModal('modal-ai');
+  });
+
+  aiGenerateBtn.addEventListener('click', async () => {
+    const prompt = aiPromptInput.value.trim();
+    if (!prompt) { toast('Enter a prompt for the AI.'); return; }
+    
+    // Daily limit for free users
+    let usesToday = parseInt(localStorage.getItem(LS.aiUses) || '0', 10);
+    if (!isPro && usesToday >= 10) {
+      toast('Daily AI limit reached (10/10). Upgrade to Pro for unlimited!', 'err');
+      return;
+    }
+
+    aiResponseArea.textContent = "Thinking...";
+    aiGenerateBtn.disabled = true;
+    aiApplyBtn.disabled = true;
+
+    try {
+      const res = await fetch('/api/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, code: codeInput.value })
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'AI request failed');
+      
+      lastAiResponse = data.response.trim();
+      aiResponseArea.textContent = lastAiResponse;
+      aiApplyBtn.disabled = false;
+
+      if (!isPro) {
+        localStorage.setItem(LS.aiUses, usesToday + 1);
+      }
+    } catch (e) {
+      aiResponseArea.textContent = "Error: " + e.message;
+      toast('AI Error: ' + e.message, 'err');
+    } finally {
+      aiGenerateBtn.disabled = false;
+    }
+  });
+
+  aiApplyBtn.addEventListener('click', () => {
+    if (!lastAiResponse) return;
+    
+    // Replace selected text, or append to the end
+    const start = codeInput.selectionStart;
+    const end = codeInput.selectionEnd;
+    
+    if (start !== end) {
+      // Replace selection
+      const newVal = codeInput.value.slice(0, start) + '\n' + lastAiResponse + '\n' + codeInput.value.slice(end);
+      codeInput.value = newVal;
+      codeInput.selectionStart = codeInput.selectionEnd = start + lastAiResponse.length + 2;
+    } else {
+      // Append at cursor
+      const newVal = codeInput.value.slice(0, start) + '\n' + lastAiResponse + '\n' + codeInput.value.slice(start);
+      codeInput.value = newVal;
+      codeInput.selectionStart = codeInput.selectionEnd = start + lastAiResponse.length + 2;
+    }
+    
+    syncHighlight();
+    closeModal('modal-ai');
+    toast('AI code applied!', 'ok');
+  });
+
   function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function highlight(code){
     let escaped = escapeHtml(code);
@@ -140,7 +215,6 @@
 
   function setUnsaved(v){ projectState.textContent = v ? '· unsaved' : ''; projectState.classList.toggle('unsaved', v); }
 
-  // Drag & Drop
   const codeSurface = document.querySelector('.code-surface');
   ['dragenter','dragover'].forEach(evt=> codeSurface.addEventListener(evt, e=>{ e.preventDefault(); codeSurface.style.outline = '2px dashed var(--wren-soft)'; }));
   ['dragleave','drop'].forEach(evt=> codeSurface.addEventListener(evt, e=>{ e.preventDefault(); codeSurface.style.outline = 'none'; }));
@@ -151,7 +225,6 @@
     reader.readAsText(file);
   });
 
-  // Build HTML Doc for Preview
   function buildDoc(code){
     const trimmed = code.trim();
     if (/^<!DOCTYPE|<html/i.test(trimmed)) return code;
@@ -168,10 +241,8 @@
     previewEmpty.style.display = 'none'; previewDevice.style.display = 'flex'; preview.srcdoc = buildDoc(codeInput.value); fitDevice(); previewUrl.textContent = 'localhost:7331';
   }
 
-  // Ad Gate Logic
   let runCount = parseInt(localStorage.getItem(LS.runs) || '0', 10);
   let fuelPasses = parseInt(localStorage.getItem(LS.fuel) || '0', 10);
-  let isPro = localStorage.getItem(LS.pro) === 'true';
   if (isPro) sponsorBanner.style.display = 'none';
 
   function shouldGate(){
@@ -190,7 +261,6 @@
   function doRun(){ editorStatus.classList.add('building'); buildState.textContent = 'bundling…'; renderPreview().catch(e=>{ console.error(e); toast('Run failed: ' + e.message, 'err'); }).finally(()=>{ editorStatus.classList.remove('building'); buildState.textContent = 'built · ready'; runCount++; localStorage.setItem(LS.runs, runCount); }); }
   runBtn.addEventListener('click', attemptRun);
 
-  // Live Preview Toggle
   document.getElementById('live-toggle-btn').addEventListener('click', function(){ liveEnabled = !liveEnabled; this.classList.toggle('is-off', !liveEnabled); this.setAttribute('aria-pressed', String(liveEnabled)); toast(liveEnabled ? 'Live preview on' : 'Live preview off — use Run to update manually'); });
   let liveEnabled = true; let liveGeneration = 0;
   async function livePreviewRefresh(){
@@ -207,7 +277,6 @@
   gateSkipBtn.addEventListener('click', ()=>{ closeModal('modal-adgate'); doRun(); });
   gateVideoBtn.addEventListener('click', ()=>{ toast('Rewarded video would play here (SDK not wired up yet)'); fuelPasses += 10; localStorage.setItem(LS.fuel, fuelPasses); toast('+10 free runs added', 'ok'); closeModal('modal-adgate'); doRun(); });
 
-  // Viewport Toggle (Spec-Accurate CSS takes over)
   function setViewport(mode, btn){
     document.querySelectorAll('[data-viewport]').forEach(b=> b.classList.remove('active'));
     btn.classList.add('active');
@@ -225,7 +294,6 @@
 
   document.getElementById('banner-watch-btn').addEventListener('click', ()=> openModal('modal-adgate'));
 
-  // Share Logic
   function openShareModal(){
     if (!codeInput.value.trim()){ toast('Write or drop some code first'); return; }
     const compressed = LZString.compressToEncodedURIComponent(codeInput.value);
@@ -247,7 +315,6 @@
     window.open(url, '_blank');
   });
 
-  // Load from URL Hash
   function loadFromHash(){
     const hash = window.location.hash;
     if (hash.startsWith('#doc=')){ try { const d = LZString.decompressFromEncodedURIComponent(hash.slice(5)); if (d){ preview.srcdoc = d; previewEmpty.style.display = 'none'; previewDevice.style.display = 'flex'; fitDevice(); previewUrl.textContent = 'shared preview'; toast('Loaded shared preview', 'ok'); return true; } } catch(e){ console.error(e); } }
@@ -259,7 +326,6 @@
   if (codeInput.value.trim()) renderPreview();
   setTimeout(fitDevice, 100); 
 
-  // GitHub Engine
   const MAX_FILES = 400;
   function parseRepoInput(input){
     input = input.trim().replace(/\.git$/, '');
@@ -276,6 +342,9 @@
   function makeLocalSource(dirHandles, rootName){
     const blobCache = new Map();
     return { kind: 'local', label: rootName, async read(path){ if (editedFiles.has(path)) return editedFiles.get(path); const handle = dirHandles.get(path); if (!handle) throw new Error('File not found: ' + path); const file = await handle.getFile(); return file.text(); }, async assetUrl(path){ if (blobCache.has(path)) return blobCache.get(path); const handle = dirHandles.get(path); if (!handle) return ''; const file = await handle.getFile(); const url = URL.createObjectURL(file); blobCache.set(path, url); return url; } };
+  }
+  function makeVirtualSource(rootName) {
+    return { kind: 'virtual', label: rootName, async read(path){ if (editedFiles.has(path)) return editedFiles.get(path); return ''; }, async assetUrl(path){ return ''; } };
   }
 
   async function ghApiFetch(path, token){
@@ -375,7 +444,6 @@
     } catch(err){ console.error(err); ghLog(err.message, 'err'); ghLogTitle.textContent = 'failed'; toast(err.message, 'err'); }
   });
 
-  // File Tree Logic
   let currentTreeData = null;
   function pathsToTree(paths){ const root = { name: '', children: {}, isFile: false }; for (const p of paths){ const parts = p.split('/'); let node = root; parts.forEach((part, i)=>{ const isFile = i === parts.length - 1; if (!node.children[part]) node.children[part] = { name: part, children: {}, isFile, fullPath: parts.slice(0, i+1).join('/') }; node = node.children[part]; }); } return root; }
   function fileIconSvg(){ return '<svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>'; }
@@ -412,22 +480,44 @@
     wireTreeInteractions(); hasProject = true; updateLayout();
     ghPushBtn.textContent = fileSource.kind === 'local' ? 'Save' : 'Push'; ghPushBtn.title = fileSource.kind === 'local' ? 'Save changes to the local folder' : 'Push commits to GitHub';
   }
+  
+  function createNewNode(isFolder) {
+    if (!currentTreeData) {
+      currentTreeData = { fileSource: makeVirtualSource('untitled'), filePaths: new Set() };
+      hasProject = true; updateLayout();
+    }
+    const name = isFolder ? 'new-folder' : 'new-file.js';
+    let path = name;
+    let counter = 1;
+    while(currentTreeData.filePaths.has(path)) {
+      path = isFolder ? `new-folder-${counter}` : `new-file-${counter}.js`;
+      counter++;
+    }
+    currentTreeData.filePaths.add(path);
+    if (!isFolder) { editedFiles.set(path, ''); }
+    renderFileTree(currentTreeData.fileSource, currentTreeData.filePaths);
+    if (!isFolder) {
+      const newRow = treeRoot.querySelector(`.file-row[data-path="${path}"]`);
+      if (newRow) openTreeFile(newRow);
+    }
+  }
+
+  newFileBtn.addEventListener('click', () => createNewNode(false));
+  newFolderBtn.addEventListener('click', () => createNewNode(true));
+
   treeSearch.addEventListener('input', ()=>{ const q = treeSearch.value.toLowerCase(); treeRoot.querySelectorAll('.file-row').forEach(row=>{ const path = (row.dataset.path || '').toLowerCase(); const match = !q || path.includes(q); row.closest('li').style.display = match ? '' : 'none'; if (match && q){ let el = row.closest('ul') ? row.closest('ul').closest('li.folder') : null; while (el){ el.classList.remove('collapsed'); el.classList.add('expanded'); el = el.parentElement ? el.parentElement.closest('li.folder') : null; } } }); });
 
-  // Layout Toggle (File Tree)
   let hasProject = false; let treeManuallyHidden = false;
   function updateLayout(){
     const showTree = hasProject && !treeManuallyHidden;
     workspace.classList.toggle('has-tree', showTree);
     filetree.style.display = showTree ? 'flex' : 'none';
-    document.getElementById('layout-tree-btn')?.classList.toggle('active', showTree);
     setTimeout(fitDevice, 50); 
   }
-  document.getElementById('layout-tree-btn').addEventListener('click', ()=>{ if (!hasProject){ toast('No project loaded — import a repo or open a local folder first'); return; } treeManuallyHidden = !treeManuallyHidden; updateLayout(); });
+  document.getElementById('layout-tree-btn').addEventListener('click', ()=>{ if (!hasProject){ openModal('modal-github'); return; } treeManuallyHidden = !treeManuallyHidden; updateLayout(); });
   treeCloseBtn.addEventListener('click', ()=>{ treeManuallyHidden = true; updateLayout(); });
   updateLayout();
 
-  // GitHub Connection State
   const ghConnectBtn = document.getElementById('gh-connect-btn'); const ghConnected = document.getElementById('gh-connected'); const ghAvatar = document.getElementById('gh-avatar'); const ghPushBtn = document.getElementById('gh-push-btn');
   async function checkGithubConnection(){
     const token = localStorage.getItem(LS.ghToken); if (!token){ ghConnectBtn.style.display = 'grid'; ghConnected.style.display = 'none'; return; }
@@ -435,13 +525,11 @@
   }
   ghConnectBtn.addEventListener('click', ()=> openModal('modal-github')); ghPushBtn.addEventListener('click', pushOrSaveChanges); checkGithubConnection();
 
-  // GitHub OAuth
   const GITHUB_OAUTH_CLIENT_ID = '';
   document.getElementById('gh-oauth-btn').addEventListener('click', ()=>{ if (!GITHUB_OAUTH_CLIENT_ID){ toast('OAuth isn\'t configured on this deployment yet — use the token field below for now'); return; } const params = new URLSearchParams({ client_id: GITHUB_OAUTH_CLIENT_ID, scope: 'repo' }); window.location.href = 'https://github.com/login/oauth/authorize?' + params.toString(); });
   async function handleOAuthCallback(){ const params = new URLSearchParams(window.location.search); const code = params.get('code'); if (!code) return; history.replaceState(null, '', window.location.origin + window.location.pathname + window.location.hash); toast('Finishing GitHub sign-in…'); try { const res = await fetch('/api/github-oauth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) }); const data = await res.json(); if (!res.ok || !data.access_token) throw new Error(data.error || 'Sign-in failed'); localStorage.setItem(LS.ghToken, data.access_token); await checkGithubConnection(); toast('Signed in with GitHub', 'ok'); closeModal('modal-github'); } catch(e){ toast('GitHub sign-in failed: ' + e.message, 'err'); } }
   handleOAuthCallback();
 
-  // Push to GitHub / Save Locally
   async function pushOrSaveChanges(){ if (!currentTreeData){ toast('No project loaded'); return; } if (currentTreeData.fileSource.kind === 'local') return saveLocalChanges(); return pushChanges(); }
   async function pushChanges(){
     if (editedFiles.size === 0){ toast('Nothing to push — no unsaved changes'); return; } const token = localStorage.getItem(LS.ghToken); if (!token){ toast('Connect GitHub first'); openModal('modal-github'); return; }
