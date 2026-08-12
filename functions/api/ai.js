@@ -7,10 +7,10 @@ export async function onRequestPost(context) {
       return new Response(JSON.stringify({ error: "AI binding not configured. Bind an AI model in Cloudflare Pages settings." }), { status: 500 });
     }
 
-    // We use deepseek-coder, a highly efficient SLM for code
     const fullPrompt = `### Instruction:\n${prompt}\n\n### Code:\n${code}\n\n### Response:\n`;
     
-    const aiResponse = await env.AI.run('@hf/thebloke/deepseek-coder-6.7b-instruct', {
+    // SWITCHED TO GLM-5.2
+    const aiResponse = await env.AI.run('@cf/zai/glm-5.2', {
       prompt: fullPrompt,
       max_tokens: 1024
     });
