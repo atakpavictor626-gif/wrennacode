@@ -451,7 +451,7 @@ import { css } from "https://esm.sh/@codemirror/lang-css";
       const esbuild = await ensureEsbuild();
       const result = await esbuild.build({ entryPoints: [moduleEntry], bundle: true, format: 'esm', jsx: 'automatic', jsxImportSource: 'https://esm.sh/react' + (npmVersions.react ? '@'+npmVersions.react.replace(/^[\^~]/,'') : ''), write: false, logLevel: 'silent', plugins: [virtualFsPlugin(fileSource, filePaths, npmVersions)] });
       let jsOut = '', cssOut = '';
-      for (const f of result.outputFiles){ if (f.path.endsWith('.css')) cssOut += f.text; else jsOut += f.text; }
+      for (const f of result.outputFiles){ if (f.path.endswith('.css')) cssout += f.text; else jsout += f.text; }
       let shell = html || '<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body><div id="root"></div></body></html>';
       shell = shell.replace(moduleScriptRegex, '');
       shell = await inlineStaticAssets(shell, htmlPath || 'index.html', fileSource, filePaths);
