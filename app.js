@@ -1,13 +1,18 @@
+import { EditorView, keymap } from "https://esm.sh/codemirror";
+import { basicSetup } from "https://esm.sh/codemirror";
+import { javascript } from "https://esm.sh/@codemirror/lang-javascript";
+import { html } from "https://esm.sh/@codemirror/lang-html";
+import { css } from "https://esm.sh/@codemirror/lang-css";
+
 (function(){
   'use strict';
-  console.log("Wrenna Engine Starting v8 (DeepSeek SLM Integration)...");
+  console.log("Wrenna Engine Starting v9 (CodeMirror 6 + Resizable + Animations)...");
 
   const closeScriptTag = '</script>';
   const scriptSrcRegex = /<script((?:(?!type=)[^>])*)src=["']([^"']+)["']([^>]*)>\s*<\/script>/gi;
   const moduleScriptRegex = /<script\b[^>]*type=["']module["'][^>]*>\s*<\/script>/i;
 
-  const codeInput = document.getElementById('code-input');
-  const codeHighlight = document.getElementById('code-highlight');
+  const editorHost = document.getElementById('editor-host');
   const runBtn = document.getElementById('run-btn');
   const buildState = document.getElementById('build-state');
   const editorStatus = document.getElementById('editor-status');
@@ -31,8 +36,9 @@
   function getActiveIndicator(){ return document.getElementById('active-indicator'); }
   const editorTabs = document.getElementById('editor-tabs');
   const workspace = document.getElementById('workspace');
+  const resizer = document.getElementById('resizer');
 
-  const LS = { draft: 'wrenna_v8_draft', runs: 'wrenna_v8_run_count', fuel: 'wrenna_v8_fuel_passes', pro: 'wrenna_v8_pro', ghToken: 'wrenna_v8_gh_token', aiUses: 'wrenna_v8_ai_uses' };
+  const LS = { draft: 'wrenna_v9_draft', runs: 'wrenna_v9_run_count', fuel: 'wrenna_v9_fuel_passes', pro: 'wrenna_v9_pro', ghToken: 'wrenna_v9_gh_token', aiUses: 'wrenna_v9_ai_uses' };
   let currentFilePath = null;
   let editedFiles = new Map();
 
@@ -43,6 +49,31 @@
     toastsEl.appendChild(el);
     setTimeout(()=>{ el.classList.add('exit'); setTimeout(()=> el.remove(), 240); }, 2600);
   }
+
+  // === Drag-to-Resize Logic ===
+  let isResizing = false;
+  resizer.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    resizer.classList.add('active');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+    const bounds = workspace.getBoundingClientRect();
+    let percentage = ((e.clientX - bounds.left) / bounds.width) * 100;
+    percentage = Math.max(20, Math.min(80, percentage)); // Clamp 20% to 80%
+    workspace.style.gridTemplateColumns = `${percentage}% 4px ${100 - percentage}%`;
+    fitDevice();
+  });
+  window.addEventListener('mouseup', () => {
+    if (isResizing) {
+      isResizing = false;
+      resizer.classList.remove('active');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  });
 
   function fitDevice() {
     if (!previewFrame || !previewDevice) return;
@@ -109,6 +140,61 @@
     window.location.href = url;
   });
 
+  // === CodeMirror 6 Setup ===
+  const wrennaTheme = EditorView.theme({
+    "&": { color: "var(--text-on-ink)", backgroundColor: "transparent" },
+    ".cm-content": { caretColor: "var(--wren-soft)" },
+    ".cm-cursor": { borderLeftColor: "var(--wren-soft)" },
+    ".cm-selectionBackground, ::selection": { backgroundColor: "rgba(181, 74, 38, 0.35)" },
+    ".tok-keyword": { color: "var(--wren-soft)" },
+    ".tok-string": { color: "#c5b88a" },
+    ".tok-comment": { color: "var(--text-mute-ink)", fontStyle: "italic" },
+    ".tok-function": { color: "#d8c5a0" }
+  });
+
+  const getEditorValue = () => editor.state.doc.toString();
+  const setEditorValue = (val) => {
+    editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: val || '' } });
+  };
+
+  const editor = new EditorView({
+    doc: localStorage.getItem(LS.draft) || '',
+    extensions: [
+      basicSetup,
+      javascript({ jsx: true, typescript: true }),
+      html(),
+      css(),
+      wrennaTheme,
+      EditorView.lineWrapping,
+      keymap.of([{
+        key: "Mod-Enter",
+        preventDefault: true,
+        run: () => { attemptRun(); return true; }
+      }]),
+      EditorView.updateListener.of(update => {
+        if (update.docChanged) {
+          charCount.textContent = getEditorValue().length.toLocaleString() + ' chars';
+          clearTimeout(editorHost._draftTimer);
+          editorHost._draftTimer = setTimeout(()=> localStorage.setItem(LS.draft, getEditorValue()), 500);
+          
+          if (currentTreeData && currentFilePath){ 
+            editedFiles.set(currentFilePath, getEditorValue()); 
+            markDirty(currentFilePath); 
+            setUnsaved(true); 
+          } else { 
+            setUnsaved(true); 
+          }
+          
+          clearTimeout(editorHost._liveTimer);
+          editorHost._liveTimer = setTimeout(livePreviewRefresh, 300);
+        }
+      })
+    ],
+    parent: editorHost
+  });
+  
+  charCount.textContent = getEditorValue().length.toLocaleString() + ' chars';
+
   // === Wrenna AI Logic ===
   const aiBtn = document.getElementById('open-ai-btn');
   const aiPromptInput = document.getElementById('ai-prompt-input');
@@ -117,9 +203,10 @@
   const aiApplyBtn = document.getElementById('ai-apply-btn');
   let lastAiResponse = '';
   let isPro = localStorage.getItem(LS.pro) === 'true';
+  if (isPro) sponsorBanner.style.display = 'none';
 
   aiBtn.addEventListener('click', () => {
-    if (!codeInput.value.trim()) { toast('Write some code first!'); return; }
+    if (!getEditorValue().trim()) { toast('Write some code first!'); return; }
     openModal('modal-ai');
   });
 
@@ -127,7 +214,6 @@
     const prompt = aiPromptInput.value.trim();
     if (!prompt) { toast('Enter a prompt for the AI.'); return; }
     
-    // Daily limit for free users
     let usesToday = parseInt(localStorage.getItem(LS.aiUses) || '0', 10);
     if (!isPro && usesToday >= 10) {
       toast('Daily AI limit reached (10/10). Upgrade to Pro for unlimited!', 'err');
@@ -142,7 +228,7 @@
       const res = await fetch('/api/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, code: codeInput.value })
+        body: JSON.stringify({ prompt, code: getEditorValue() })
       });
       const data = await res.json();
 
@@ -166,63 +252,13 @@
   aiApplyBtn.addEventListener('click', () => {
     if (!lastAiResponse) return;
     
-    // Replace selected text, or append to the end
-    const start = codeInput.selectionStart;
-    const end = codeInput.selectionEnd;
+    const start = editor.state.selection.main.from;
+    const end = editor.state.selection.main.to;
     
-    if (start !== end) {
-      // Replace selection
-      const newVal = codeInput.value.slice(0, start) + '\n' + lastAiResponse + '\n' + codeInput.value.slice(end);
-      codeInput.value = newVal;
-      codeInput.selectionStart = codeInput.selectionEnd = start + lastAiResponse.length + 2;
-    } else {
-      // Append at cursor
-      const newVal = codeInput.value.slice(0, start) + '\n' + lastAiResponse + '\n' + codeInput.value.slice(start);
-      codeInput.value = newVal;
-      codeInput.selectionStart = codeInput.selectionEnd = start + lastAiResponse.length + 2;
-    }
+    editor.dispatch({ changes: { from: start, to: end, insert: '\n' + lastAiResponse + '\n' } });
     
-    syncHighlight();
     closeModal('modal-ai');
     toast('AI code applied!', 'ok');
-  });
-
-  function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-  function highlight(code){
-    let escaped = escapeHtml(code);
-    escaped = escaped.replace(/(\/\/[^\n]*)/g, '<span class="tok-com">$1</span>');
-    escaped = escaped.replace(/(&quot;|&#39;|"|')((?:(?!\1)[^\\]|\\.)*?)\1/g, (m)=> `<span class="tok-str">${m}</span>`);
-    escaped = escaped.replace(/\b(const|let|var|function|return|import|export|from|default|if|else|for|while|class|extends|new|async|await|try|catch|typeof|null|undefined|true|false)\b/g, '<span class="tok-key">$1</span>');
-    escaped = escaped.replace(/([a-zA-Z_$][\w$]*)(?=\()/g, '<span class="tok-fn">$1</span>');
-    return escaped;
-  }
-  function syncHighlight(){ codeHighlight.innerHTML = highlight(codeInput.value) + '\n'; charCount.textContent = codeInput.value.length.toLocaleString() + ' chars'; }
-  function syncScroll(){ codeHighlight.scrollTop = codeInput.scrollTop; codeHighlight.scrollLeft = codeInput.scrollLeft; }
-  
-  codeInput.addEventListener('input', ()=>{
-    syncHighlight();
-    clearTimeout(codeInput._draftTimer);
-    codeInput._draftTimer = setTimeout(()=> localStorage.setItem(LS.draft, codeInput.value), 500);
-    if (currentTreeData && currentFilePath){ editedFiles.set(currentFilePath, codeInput.value); markDirty(currentFilePath); setUnsaved(true); } else { setUnsaved(true); }
-    clearTimeout(codeInput._liveTimer);
-    codeInput._liveTimer = setTimeout(livePreviewRefresh, 300); 
-  });
-  codeInput.addEventListener('scroll', syncScroll);
-  codeInput.addEventListener('keydown', e=>{
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter'){ e.preventDefault(); attemptRun(); }
-    if (e.key === 'Tab'){ e.preventDefault(); const s = codeInput.selectionStart, en = codeInput.selectionEnd; codeInput.value = codeInput.value.slice(0,s) + '  ' + codeInput.value.slice(en); codeInput.selectionStart = codeInput.selectionEnd = s + 2; syncHighlight(); }
-  });
-
-  function setUnsaved(v){ projectState.textContent = v ? '· unsaved' : ''; projectState.classList.toggle('unsaved', v); }
-
-  const codeSurface = document.querySelector('.code-surface');
-  ['dragenter','dragover'].forEach(evt=> codeSurface.addEventListener(evt, e=>{ e.preventDefault(); codeSurface.style.outline = '2px dashed var(--wren-soft)'; }));
-  ['dragleave','drop'].forEach(evt=> codeSurface.addEventListener(evt, e=>{ e.preventDefault(); codeSurface.style.outline = 'none'; }));
-  codeSurface.addEventListener('drop', e=>{
-    const file = e.dataTransfer.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ()=>{ codeInput.value = reader.result; syncHighlight(); projectName.textContent = file.name; toast('Loaded ' + file.name, 'ok'); };
-    reader.readAsText(file);
   });
 
   function buildDoc(code){
@@ -233,17 +269,16 @@
   }
 
   async function renderPreview(){
-    if (!codeInput.value.trim() && !currentTreeData){ previewEmpty.style.display = 'grid'; previewDevice.style.display = 'none'; previewUrl.textContent = 'preview'; return; }
+    if (!getEditorValue().trim() && !currentTreeData){ previewEmpty.style.display = 'grid'; previewDevice.style.display = 'none'; previewUrl.textContent = 'preview'; return; }
     if (currentTreeData){
       const finalDoc = await rebuildProject(currentTreeData.fileSource, currentTreeData.filePaths);
       preview.srcdoc = finalDoc; previewEmpty.style.display = 'none'; previewDevice.style.display = 'flex'; fitDevice(); previewUrl.textContent = currentTreeData.fileSource.label; return;
     }
-    previewEmpty.style.display = 'none'; previewDevice.style.display = 'flex'; preview.srcdoc = buildDoc(codeInput.value); fitDevice(); previewUrl.textContent = 'localhost:7331';
+    previewEmpty.style.display = 'none'; previewDevice.style.display = 'flex'; preview.srcdoc = buildDoc(getEditorValue()); fitDevice(); previewUrl.textContent = 'localhost:7331';
   }
 
   let runCount = parseInt(localStorage.getItem(LS.runs) || '0', 10);
   let fuelPasses = parseInt(localStorage.getItem(LS.fuel) || '0', 10);
-  if (isPro) sponsorBanner.style.display = 'none';
 
   function shouldGate(){
     if (isPro) return false;
@@ -257,14 +292,14 @@
   }
   let nextGateAt = null;
 
-  function attemptRun(){ if (!codeInput.value.trim() && !currentTreeData){ toast('Nothing to run yet — write or drop some code first'); return; } if (shouldGate()) openGate(); else doRun(); }
+  function attemptRun(){ if (!getEditorValue().trim() && !currentTreeData){ toast('Nothing to run yet — write or drop some code first'); return; } if (shouldGate()) openGate(); else doRun(); }
   function doRun(){ editorStatus.classList.add('building'); buildState.textContent = 'bundling…'; renderPreview().catch(e=>{ console.error(e); toast('Run failed: ' + e.message, 'err'); }).finally(()=>{ editorStatus.classList.remove('building'); buildState.textContent = 'built · ready'; runCount++; localStorage.setItem(LS.runs, runCount); }); }
   runBtn.addEventListener('click', attemptRun);
 
   document.getElementById('live-toggle-btn').addEventListener('click', function(){ liveEnabled = !liveEnabled; this.classList.toggle('is-off', !liveEnabled); this.setAttribute('aria-pressed', String(liveEnabled)); toast(liveEnabled ? 'Live preview on' : 'Live preview off — use Run to update manually'); });
   let liveEnabled = true; let liveGeneration = 0;
   async function livePreviewRefresh(){
-    if (!liveEnabled) return; if (!codeInput.value.trim() && !currentTreeData) return;
+    if (!liveEnabled) return; if (!getEditorValue().trim() && !currentTreeData) return;
     const myGen = ++liveGeneration; buildState.textContent = 'live · updating…';
     try { await renderPreview(); } catch(e){ if (myGen === liveGeneration) buildState.textContent = 'live · error (see console)'; console.error(e); return; }
     if (myGen === liveGeneration) buildState.textContent = 'live · up to date';
@@ -295,8 +330,8 @@
   document.getElementById('banner-watch-btn').addEventListener('click', ()=> openModal('modal-adgate'));
 
   function openShareModal(){
-    if (!codeInput.value.trim()){ toast('Write or drop some code first'); return; }
-    const compressed = LZString.compressToEncodedURIComponent(codeInput.value);
+    if (!getEditorValue().trim()){ toast('Write or drop some code first'); return; }
+    const compressed = LZString.compressToEncodedURIComponent(getEditorValue());
     const url = window.location.origin + window.location.pathname + '#code=' + compressed;
     document.getElementById('share-input').value = url;
     document.getElementById('share-meta').textContent = url.length > 8000 ? 'large snippet — Gist fallback not wired up yet' : 'ready to copy';
@@ -318,12 +353,11 @@
   function loadFromHash(){
     const hash = window.location.hash;
     if (hash.startsWith('#doc=')){ try { const d = LZString.decompressFromEncodedURIComponent(hash.slice(5)); if (d){ preview.srcdoc = d; previewEmpty.style.display = 'none'; previewDevice.style.display = 'flex'; fitDevice(); previewUrl.textContent = 'shared preview'; toast('Loaded shared preview', 'ok'); return true; } } catch(e){ console.error(e); } }
-    if (hash.startsWith('#code=')){ try { const d = LZString.decompressFromEncodedURIComponent(hash.slice(6)); if (d){ codeInput.value = d; toast('Loaded shared code', 'ok'); return true; } } catch(e){ console.error(e); } }
+    if (hash.startsWith('#code=')){ try { const d = LZString.decompressFromEncodedURIComponent(hash.slice(6)); if (d){ setEditorValue(d); toast('Loaded shared code', 'ok'); return true; } } catch(e){ console.error(e); } }
     return false;
   }
-  if (!loadFromHash()){ const draft = localStorage.getItem(LS.draft); if (draft) codeInput.value = draft; }
-  syncHighlight();
-  if (codeInput.value.trim()) renderPreview();
+  if (!loadFromHash()) { /* CodeMirror loaded draft from LS already */ }
+  if (getEditorValue().trim()) renderPreview();
   setTimeout(fitDevice, 100); 
 
   const MAX_FILES = 400;
@@ -466,7 +500,7 @@
     treeRoot.querySelectorAll('.file-row.active').forEach(r=> r.classList.remove('active')); row.classList.add('active');
     requestAnimationFrame(()=>{ getActiveIndicator().style.top = (row.offsetTop + 6) + 'px'; });
     const path = row.dataset.path; if (!currentTreeData) return;
-    try { const content = editedFiles.has(path) ? editedFiles.get(path) : await currentTreeData.fileSource.read(path); currentFilePath = path; codeInput.value = content; syncHighlight(); projectName.textContent = path; editorTabs.style.display = 'flex'; const dot = editedFiles.has(path) ? '<span class="edit-dot"></span>' : ''; editorTabs.innerHTML = `<div class="tab active"><span>${path.split('/').pop()}</span>${dot}</div>`; } catch(e){ toast('Could not load ' + path, 'err'); }
+    try { const content = editedFiles.has(path) ? editedFiles.get(path) : await currentTreeData.fileSource.read(path); currentFilePath = path; setEditorValue(content); projectName.textContent = path; editorTabs.style.display = 'flex'; const dot = editedFiles.has(path) ? '<span class="edit-dot"></span>' : ''; editorTabs.innerHTML = `<div class="tab active"><span>${path.split('/').pop()}</span>${dot}</div>`; } catch(e){ toast('Could not load ' + path, 'err'); }
   }
   function markDirty(path){ const row = treeRoot.querySelector(`.file-row[data-path="${CSS.escape(path)}"]`); if (row && !row.querySelector('.edit-dot')) row.appendChild(Object.assign(document.createElement('span'), { className: 'edit-dot' })); const tab = editorTabs.querySelector('.tab.active'); if (tab && !tab.querySelector('.edit-dot')) tab.appendChild(Object.assign(document.createElement('span'), { className: 'edit-dot' })); }
   function clearDirty(path){ const row = treeRoot.querySelector(`.file-row[data-path="${CSS.escape(path)}"]`); if(row) { const dot = row.querySelector('.edit-dot'); if(dot) dot.remove(); } if (currentFilePath === path) { const t = editorTabs.querySelector('.tab.active .edit-dot'); if(t) t.remove(); } }
