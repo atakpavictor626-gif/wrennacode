@@ -78,17 +78,14 @@
         <button class="icon-btn-sm focus-btn" data-focus="editor" title="Maximize Editor"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
       </div>
     </div>
-    <div class="editor" id="editor-wrap">
-      <div class="code-surface">
-        <pre class="code-highlight" id="code-highlight" aria-hidden="true"></pre>
-        <textarea class="code-input" id="code-input" spellcheck="false" autocapitalize="off" autocorrect="off" placeholder="Paste or type any code here. Drop a file, or hit Ctrl/Cmd+Enter to run."></textarea>
-      </div>
-    </div>
+    <div class="code-surface" id="editor-host"></div>
     <div class="editor-status" id="editor-status">
       <span class="build-state" id="build-state">idle</span>
       <span id="char-count">0 chars</span>
     </div>
   </section>
+
+  <div class="resizer" id="resizer"></div>
 
   <section class="preview-pane" id="preview-pane">
     <div class="pane-header">
@@ -160,6 +157,6 @@
 
 <div class="toasts" id="toasts"></div>
 
-<script src="app.js" defer></script>
+<script type="module" src="app.js"></script>
 </body>
 </html>
