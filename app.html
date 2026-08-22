@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <meta name="description" content="Wrenna Editor — Paste code, see it live.">
+    <meta name="theme-color" content="#16120E">
+    <title>Wrenna — Editor</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23b54a26' d='M6 20 Q8 14 12 12 Q13 8 17 9 Q20 10 19 13 Q23 11 26 14 Q28 16 27 19 Q24 18 22 19 Q20 23 16 24 Q12 25 10 23 Q8 22 6 20 Z'/%3E%3C/svg%3E">
+    
+    <!-- Fonts (same as landing for consistency) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/app.css">
+</head>
+<body class="app-body">
+    <a href="#editor-pane" class="skip-link">Skip to editor</a>
+    
+    <!-- ==================== ACTIVITY BAR ==================== -->
+    <aside class="activity-bar" role="navigation" aria-label="Editor tools">
+        <!-- Logo / Hamburger (toggles file tree) -->
+        <button class="activity-btn activity-logo" id="btn-file-tree" aria-label="Toggle file tree" title="Files">
+            <svg class="icon icon-logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+                <path d="M6 20 Q8 14 12 12 Q13 8 17 9 Q20 10 19 13 Q23 11 26 14 Q28 16 27 19 Q24 18 22 19 Q20 23 16 24 Q12 25 10 23 Q8 22 6 20 Z" fill="currentColor"/>
+                <circle cx="24" cy="13" r="0.8" fill="var(--ink-0)"/>
+            </svg>
+        </button>
+        
+        <div class="activity-divider" aria-hidden="true"></div>
+        
+        <!-- Import -->
+        <button class="activity-btn" id="btn-import" aria-label="Import file or repo" title="Import">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+        </button>
+        
+        <!-- GitHub -->
+        <button class="activity-btn" id="btn-github" aria-label="GitHub integration" title="GitHub">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V22"/>
+            </svg>
+        </button>
+        
+        <!-- Share -->
+        <button class="activity-btn" id="btn-share" aria-label="Share project" title="Share">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="18" cy="5" r="3"/>
+                <circle cx="6" cy="12" r="3"/>
+                <circle cx="18" cy="19" r="3"/>
+                <line x1="8.6" y1="13.5" x2="15.4" y2="17.5"/>
+                <line x1="15.4" y1="6.5" x2="8.6" y2="10.5"/>
+            </svg>
+        </button>
+        
+        <!-- Live toggle -->
+        <button class="activity-btn" id="btn-live" aria-label="Toggle live preview" title="Live Preview" aria-pressed="true">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+            </svg>
+        </button>
+        
+        <div class="activity-spacer" aria-hidden="true"></div>
+        
+        <!-- Run -->
+        <button class="activity-btn activity-run" id="btn-run" aria-label="Run code" title="Run (Ctrl+Enter)">
+            <svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <polygon points="6 3 20 12 6 21 6 3"/>
+            </svg>
+        </button>
+        
+        <!-- AI -->
+        <button class="activity-btn activity-ai" id="btn-ai" aria-label="Ask Wrenna AI" title="Wrenna AI">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 2 L2 7 L12 12 L22 7 Z"/>
+                <path d="M2 17 L12 22 L22 17"/>
+                <path d="M2 12 L12 17 L22 12"/>
+            </svg>
+        </button>
+        
+        <!-- Pro -->
+        <button class="activity-btn activity-pro" id="btn-pro" aria-label="Upgrade to Pro" title="Pro">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+        </button>
+    </aside>
+    
+    <!-- ==================== FILE TREE OVERLAY ==================== -->
+    <div class="file-tree-overlay" id="file-tree-overlay" role="dialog" aria-label="File tree" aria-hidden="true">
+        <div class="file-tree-panel">
+            <div class="file-tree-header">
+                <h2 class="file-tree-title">Files</h2>
+                <button class="file-tree-close" id="btn-file-tree-close" aria-label="Close file tree">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            
+            <div class="file-tree-search">
+                <input type="search" id="file-search" placeholder="Search files..." aria-label="Search files">
+            </div>
+            
+            <nav class="file-tree-list" id="file-tree" role="tree" aria-label="Project files">
+                <!-- Populated by JS -->
+            </nav>
+            
+            <div class="file-tree-actions">
+                <button class="btn btn-ghost btn-sm" id="btn-new-file">
+                    <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                    New File
+                </button>
+                <button class="btn btn-ghost btn-sm" id="btn-open-folder">
+                    <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    Open Folder
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ==================== MAIN WORKSPACE ==================== -->
+    <main class="workspace" id="workspace">
+        
+        <!-- Editor Pane -->
+        <section class="pane pane-editor" id="editor-pane" aria-label="Code editor">
+            <header class="pane-header">
+                <div class="pane-tabs">
+                    <div class="tab active" id="tab-index-html" data-file="index.html" role="tab" aria-selected="true" tabindex="0">
+                        <span class="tab-name">index.html</span>
+                        <button class="tab-close" aria-label="Close file">×</button>
+                    </div>
+                    <button class="tab-new" id="btn-tab-new" aria-label="New file">
+                        <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                            <line x1="12" y1="5" x2="12" y2="19"/>
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="pane-actions">
+                    <!-- AI Button (in header for quick access) -->
+                    <button class="pane-btn" id="btn-ai-header" aria-label="Ask Wrenna AI" title="Wrenna AI">
+                        <span class="ai-spark" aria-hidden="true"></span>
+                        Ask AI
+                    </button>
+                    
+                    <!-- Maximize editor -->
+                    <button class="pane-btn pane-maximize" id="btn-maximize-editor" aria-label="Maximize editor" title="Focus Editor">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+                        </svg>
+                    </button>
+                </div>
+            </header>
+            
+            <div class="pane-body editor-body">
+                <div id="codemirror-container" class="codemirror-host"></div>
+            </div>
+            
+            <footer class="editor-statusbar">
+                <span class="status-item" id="status-lang">HTML</span>
+                <span class="status-item" id="status-cursor">Ln 1, Col 1</span>
+                <span class="status-item" id="status-file-size">0 B</span>
+            </footer>
+        </section>
+        
+        <!-- Resize Handle -->
+        <div class="resize-handle" id="resize-handle" role="separator" aria-orientation="vertical" aria-label="Resize panes" tabindex="0">
+            <div class="resize-grip" aria-hidden="true"></div>
+        </div>
+        
+        <!-- Preview Pane -->
+        <section class="pane pane-preview" id="preview-pane" aria-label="Live preview">
+            <header class="pane-header">
+                <div class="preview-url-bar">
+                    <div class="url-dots" aria-hidden="true">
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                    </div>
+                    <input type="text" class="url-input" id="preview-url" value="wrenna.local/preview" aria-label="Preview URL" readonly>
+                </div>
+                
+                <div class="pane-actions">
+                    <!-- Device selector -->
+                    <div class="device-selector" role="toolbar" aria-label="Device viewport">
+                        <button class="device-btn active" data-device="desktop" aria-label="Desktop viewport" title="Desktop">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="2" y="3" width="20" height="14" rx="2"/>
+                                <line x1="8" y1="21" x2="16" y2="21"/>
+                                <line x1="12" y1="17" x2="12" y2="21"/>
+                            </svg>
+                        </button>
+                        <button class="device-btn" data-device="tablet" aria-label="Tablet viewport" title="Tablet">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="4" y="2" width="16" height="20" rx="2"/>
+                                <line x1="12" y1="18" x2="12" y2="18"/>
+                            </svg>
+                        </button>
+                        <button class="device-btn" data-device="mobile" aria-label="Mobile viewport" title="Mobile">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="5" y="2" width="14" height="20" rx="2"/>
+                                <line x1="12" y1="18" x2="12" y2="18"/>
+                            </svg>
+                        </button>
+                    </div>
+                    
+                    <!-- Refresh -->
+                    <button class="pane-btn" id="btn-refresh-preview" aria-label="Refresh preview" title="Refresh">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="23 4 23 10 17 10"/>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                        </svg>
+                    </button>
+                    
+                    <!-- Maximize preview -->
+                    <button class="pane-btn pane-maximize" id="btn-maximize-preview" aria-label="Maximize preview" title="Focus Preview">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+                        </svg>
+                    </button>
+                </div>
+            </header>
+            
+            <div class="pane-body preview-body">
+                <div class="preview-stage" id="preview-stage">
+                    <!-- Device frame container -->
+                    <div class="device-frame device-desktop active" id="device-frame" data-device="desktop">
+                        <!-- Desktop frame -->
+                        <div class="device-screen device-screen-desktop">
+                            <div class="browser-chrome">
+                                <div class="browser-tabs">
+                                    <span class="browser-tab active">
+                                        <span class="tab-favicon"></span>
+                                        <span class="tab-title">Preview</span>
+                                    </span>
+                                </div>
+                                <div class="browser-url">wrenna.local/preview</div>
+                            </div>
+                            <iframe id="preview-iframe" class="preview-iframe" sandbox="allow-scripts allow-forms allow-popups allow-modals" title="Code preview"></iframe>
+                        </div>
+                        
+                        <!-- Tablet frame (hidden by default) -->
+                        <div class="device-screen device-screen-tablet">
+                            <div class="tablet-notch"></div>
+                            <iframe id="preview-iframe-tablet" class="preview-iframe" sandbox="allow-scripts allow-forms allow-popups allow-modals" title="Tablet preview"></iframe>
+                            <div class="tablet-home"></div>
+                        </div>
+                        
+                        <!-- Mobile frame (hidden by default) -->
+                        <div class="device-screen device-screen-mobile">
+                            <div class="mobile-notch">
+                                <span class="notch-speaker"></span>
+                                <span class="notch-camera"></span>
+                            </div>
+                            <iframe id="preview-iframe-mobile" class="preview-iframe" sandbox="allow-scripts allow-forms allow-popups allow-modals" title="Mobile preview"></iframe>
+                            <div class="mobile-home-indicator"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Empty state (shown when no code) -->
+                <div class="preview-empty" id="preview-empty">
+                    <svg class="empty-wren" viewBox="0 0 100 60" fill="currentColor" aria-hidden="true">
+                        <ellipse cx="45" cy="38" rx="22" ry="13"/>
+                        <circle cx="65" cy="30" r="9"/>
+                        <path d="M74 28 L86 25 L74 32 Z"/>
+                        <path d="M24 36 Q10 28 4 16 Q10 26 18 32 Q22 36 24 40 Z"/>
+                    </svg>
+                    <p>Preview will appear here</p>
+                    <span class="empty-hint">Press <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to run</span>
+                </div>
+            </div>
+        </section>
+    </main>
+    
+    <!-- ==================== AI MODAL ==================== -->
+    <div class="modal-overlay" id="ai-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="ai-modal-title" aria-hidden="true">
+        <div class="modal ai-modal">
+            <header class="modal-header">
+                <h2 id="ai-modal-title" class="modal-title">
+                    <span class="ai-spark" aria-hidden="true"></span>
+                    Wrenna AI
+                </h2>
+                <button class="modal-close" id="btn-ai-close" aria-label="Close AI modal">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </header>
+            
+            <div class="modal-body">
+                <div class="ai-context" id="ai-context">
+                    <label class="ai-context-label">Selected code (context):</label>
+                    <pre class="ai-context-code" id="ai-context-code">// Select code in the editor to provide context</pre>
+                </div>
+                
+                <div class="ai-prompt-group">
+                    <label for="ai-prompt" class="ai-prompt-label">What do you want to do?</label>
+                    <textarea id="ai-prompt" class="ai-prompt-input" rows="3" placeholder="e.g., Add Tailwind classes for a responsive card layout..." aria-label="AI prompt"></textarea>
+                </div>
+                
+                <div class="ai-suggestions">
+                    <button class="suggestion-chip" data-prompt="Add dark mode support">Add dark mode</button>
+                    <button class="suggestion-chip" data-prompt="Refactor for better performance">Refactor</button>
+                    <button class="suggestion-chip" data-prompt="Add error handling">Add error handling</button>
+                    <button class="suggestion-chip" data-prompt="Add comments explaining this code">Explain code</button>
+                </div>
+            </div>
+            
+            <footer class="modal-footer">
+                <span class="ai-quota" id="ai-quota">10 requests left today</span>
+                <button class="btn btn-primary" id="btn-ai-generate">
+                    Generate
+                    <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                    </svg>
+                </button>
+            </footer>
+        </div>
+    </div>
+    
+    <!-- ==================== SHARE MODAL ==================== -->
+    <div class="modal-overlay" id="share-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="share-modal-title" aria-hidden="true">
+        <div class="modal share-modal">
+            <header class="modal-header">
+                <h2 id="share-modal-title" class="modal-title">Share Project</h2>
+                <button class="modal-close" id="btn-share-close" aria-label="Close share modal">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </header>
+            
+            <div class="modal-body">
+                <p class="share-description">Generate a link that encodes your entire project. Anyone with the link sees your exact code and preview.</p>
+                
+                <div class="share-link-group">
+                    <input type="text" id="share-url" class="share-url-input" readonly aria-label="Share URL" placeholder="Click generate to create link">
+                    <button class="btn btn-primary btn-sm" id="btn-generate-link">Generate</button>
+                </div>
+                
+                <div class="share-options">
+                    <label class="share-option">
+                        <input type="checkbox" id="share-include-preview" checked>
+                        <span>Include rendered preview</span>
+                    </label>
+                </div>
+                
+                <div class="share-actions">
+                    <button class="btn btn-ghost btn-sm" id="btn-copy-link" disabled>
+                        <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="9" y="9" width="13" height="13" rx="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                        Copy Link
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- ==================== STATUS BAR / SPONSOR ==================== -->
+    <footer class="app-footer" id="app-footer">
+        <div class="sponsor-banner" id="sponsor-banner">
+            <span class="sponsor-text">
+                <svg class="icon icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                </svg>
+                Powered by
+                <a href="#" class="sponsor-link">Sponsor Name</a>
+                — Remove with Pro
+            </span>
+            <button class="sponsor-close" id="btn-sponsor-close" aria-label="Dismiss sponsor banner">
+                <svg class="icon icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+    </footer>
+    
+    <!-- ==================== TOAST NOTIFICATIONS ==================== -->
+    <div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="true"></div>
+    
+    <!-- ==================== MOBILE GESTURE HINTS ==================== -->
+    <div class="gesture-hint" id="gesture-hint" aria-hidden="true">
+        <div class="gesture-hint-content">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M5 12h14"/>
+                <path d="M12 5l7 7-7 7"/>
+            </svg>
+            <span>Swipe to switch panes</span>
+        </div>
+    </div>
+    
+    <!-- Scripts (ES Modules) -->
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
