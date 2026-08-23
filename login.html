@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="description" content="Sign in to Wrenna — sync your projects across devices.">
+    <meta name="theme-color" content="#141210">
+    <title>Wrenna — Sign In</title>
+    
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23e8734a' d='M6 20 Q8 14 12 12 Q13 8 17 9 Q20 10 19 13 Q23 11 26 14 Q28 16 27 19 Q24 18 22 19 Q20 23 16 24 Q12 25 10 23 Q8 22 6 20 Z'/%3E%3C/svg%3E">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="css/login.css">
+</head>
+<body class="login-body">
+    
+    <!-- ============ LEFT: BRAND PANEL ============ -->
+    <aside class="brand-panel" aria-hidden="true">
+        <!-- Animated wren scene -->
+        <div class="brand-scene">
+            <!-- Ambient circles -->
+            <div class="scene-circle scene-circle-1"></div>
+            <div class="scene-circle scene-circle-2"></div>
+            <div class="scene-circle scene-circle-3"></div>
+            
+            <!-- The wren -->
+            <svg class="scene-wren" viewBox="0 0 200 120" fill="none">
+                <!-- Branch -->
+                <path d="M20 90 Q80 75 130 80 Q170 84 190 72"
+                      stroke="rgba(242,234,217,0.3)" stroke-width="3" stroke-linecap="round"/>
+                
+                <!-- Leaves -->
+                <ellipse cx="50" cy="80" rx="8" ry="4" fill="rgba(122,139,82,0.6)" transform="rotate(-12 50 80)"/>
+                <ellipse cx="150" cy="79" rx="7" ry="3.5" fill="rgba(122,139,82,0.5)" transform="rotate(8 150 79)"/>
+                
+                <!-- Body -->
+                <ellipse cx="90" cy="66" rx="28" ry="16" fill="#f2ead9" opacity="0.95"/>
+                <path d="M76 62 Q80 50 94 48 Q102 54 98 64 Q86 72 76 62 Z" fill="rgba(242,234,217,0.7)"/>
+                <ellipse cx="98" cy="73" rx="14" ry="8" fill="rgba(242,234,217,0.5)"/>
+                
+                <!-- Tail (cocked up) -->
+                <path d="M64 66 Q44 58 30 40 Q38 54 54 62 Q60 66 62 70 Z" fill="rgba(242,234,217,0.85)"/>
+                
+                <!-- Head -->
+                <circle cx="116" cy="56" r="12" fill="#f2ead9"/>
+                <!-- Eye stripe -->
+                <path d="M108 50 Q120 46 128 52" stroke="#c45830" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+                <!-- Eye -->
+                <circle cx="118" cy="54" r="2.5" fill="#141210"/>
+                <circle cx="119" cy="53" r="0.8" fill="#f2ead9"/>
+                <!-- Beak -->
+                <path d="M128 54 L140 51 L128 58 Z" fill="#332d27"/>
+                
+                <!-- Feet -->
+                <path d="M86 82 L86 88 M94 82 L94 88" stroke="rgba(242,234,217,0.4)" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            
+            <!-- Floating particles -->
+            <span class="scene-particle" style="--d:0s;--t:14s;--x:10%;--s:4px"></span>
+            <span class="scene-particle" style="--d:3s;--t:18s;--x:30%;--s:3px"></span>
+            <span class="scene-particle" style="--d:1s;--t:16s;--x:55%;--s:5px"></span>
+            <span class="scene-particle" style="--d:5s;--t:20s;--x:75%;--s:3px"></span>
+            <span class="scene-particle" style="--d:2s;--t:15s;--x:90%;--s:4px"></span>
+        </div>
+        
+        <!-- Brand copy -->
+        <div class="brand-copy">
+            <p class="brand-eyebrow">Wrenna</p>
+            <h1 class="brand-headline">
+                Enter your notebook,<br>
+                <em>discover new</em><br>
+                <em>sketches.</em>
+            </h1>
+            <p class="brand-sub">
+                Sync your projects across devices. Unlock cloud saves,
+                private repos, and unlimited AI.
+            </p>
+            
+            <!-- Feature bullets -->
+            <ul class="brand-features">
+                <li>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                    Cloud sync across devices
+                </li>
+                <li>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                    Private GitHub repositories
+                </li>
+                <li>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                    Unlimited Wrenna AI
+                </li>
+            </ul>
+        </div>
+    </aside>
+    
+    <!-- ============ RIGHT: FORM PANEL ============ -->
+    <main class="form-panel">
+        <div class="form-container">
+            
+            <!-- Logo (mobile only) -->
+            <a href="/" class="mobile-logo" aria-label="Wrenna home">
+                <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+                    <path d="M6 20 Q8 14 12 12 Q13 8 17 9 Q20 10 19 13 Q23 11 26 14 Q28 16 27 19 Q24 18 22 19 Q20 23 16 24 Q12 25 10 23 Q8 22 6 20 Z" fill="currentColor"/>
+                </svg>
+                <span>Wrenna</span>
+            </a>
+            
+            <!-- Back link -->
+            <a href="app.html" class="back-link">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="19" y1="12" x2="5" y2="12"/>
+                    <polyline points="12 19 5 12 12 5"/>
+                </svg>
+                Back to editor
+            </a>
+            
+            <!-- ============ SIGN IN VIEW ============ -->
+            <div class="auth-view" id="view-signin">
+                <h2 class="form-title">Welcome back</h2>
+                <p class="form-sub">Sign in to sync your work.</p>
+                
+                <!-- GitHub OAuth button -->
+                <button class="btn-github" id="btn-github-signin">
+                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                    </svg>
+                    Continue with GitHub
+                </button>
+                
+                <div class="divider">
+                    <span>or</span>
+                </div>
+                
+                <!-- Email form (placeholder for future) -->
+                <form class="email-form" id="email-signin-form">
+                    <label class="field">
+                        <span class="field-label">Email</span>
+                        <input type="email" placeholder="you@example.com" required autocomplete="email">
+                    </label>
+                    
+                    <button type="submit" class="btn-accent btn-block" disabled title="Coming soon — GitHub sign-in for now">
+                        Sign in with email
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                            <polyline points="12 5 19 12 12 19"/>
+                        </svg>
+                    </button>
+                </form>
+                
+                <p class="switch-view">
+                    New to Wrenna?
+                    <button class="link-btn" data-view="signup">Create an account</button>
+                </p>
+            </div>
+            
+            <!-- ============ SIGN UP VIEW ============ -->
+            <div class="auth-view hidden" id="view-signup">
+                <h2 class="form-title">Create your notebook</h2>
+                <p class="form-sub">Free forever. Pro when you're ready.</p>
+                
+                <button class="btn-github" id="btn-github-signup">
+                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                    </svg>
+                    Continue with GitHub
+                </button>
+                
+                <div class="divider"><span>or</span></div>
+                
+                <form class="email-form" id="email-signup-form">
+                    <div class="field-row">
+                        <label class="field">
+                            <span class="field-label">First name</span>
+                            <input type="text" placeholder="Ada" autocomplete="given-name">
+                        </label>
+                        <label class="field">
+                            <span class="field-label">Last name</span>
+                            <input type="text" placeholder="Lovelace" autocomplete="family-name">
+                        </label>
+                    </div>
+                    
+                    <label class="field">
+                        <span class="field-label">Email</span>
+                        <input type="email" placeholder="you@example.com" required autocomplete="email">
+                    </label>
+                    
+                    <button type="submit" class="btn-accent btn-block" disabled title="Coming soon — GitHub sign-in for now">
+                        Create account
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                            <polyline points="12 5 19 12 12 19"/>
+                        </svg>
+                    </button>
+                </form>
+                
+                <p class="switch-view">
+                    Already have an account?
+                    <button class="link-btn" data-view="signin">Sign in</button>
+                </p>
+            </div>
+            
+            <!-- Terms note -->
+            <p class="terms-note">
+                By continuing, you agree to our
+                <a href="#">Terms of Service</a> and
+                <a href="#">Privacy Policy</a>.
+            </p>
+        </div>
+    </main>
+    
+    <script type="module" src="js/login.js"></script>
+</body>
+</html>
