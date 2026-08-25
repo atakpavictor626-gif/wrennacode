@@ -1,7 +1,7 @@
 /**
- * WRENNA — app.js (FIXED)
- * The bug: EditorState.appendConfig.of() was invalid.
- * The fix: include updateListener in initial extensions.
+ * WRENNA — app.js (v3 — FIXED null crashes)
+ * Every DOM lookup is now null-safe. The previous version
+ * crashed on $('btn-live') which killed the whole module.
  */
 
 // ============================================================
@@ -18,16 +18,19 @@ import { markdown as mdLang } from 'https://esm.sh/@codemirror/lang-markdown';
 
 import LZString from 'https://esm.sh/lz-string@1.5.0';
 
-// Warn if opened via file:// (ES modules won't load)
-if (location.protocol === 'file:') {
-    console.warn(
-        '%c⚠ Wrenna requires an HTTP server.',
-        'font-size:14px;color:#e8734a;font-weight:bold;'
-    );
-    console.warn('ES modules are blocked by CORS on file:// protocol.');
-    console.warn('Run: npx serve .   or   python -m http.server 8000');
-}
-
+// ============================================================
+// SAFE DOM HELPER — this prevents the crash entirely
+// ============================================================
+const $ = (id) => document.getElementById(id);
+const safeListen = (id, event, handler) => {
+    const el = $(id);
+    if (el) {
+        el.addEventListener(event, handler);
+    } else {
+        console.warn(`⚠ Wrenna: element "${id}" not found — skipping listener`);
+    }
+    return el;
+};
 
 // ============================================================
 // CONFIG
@@ -37,7 +40,6 @@ const CONFIG = {
     SAVE_DEBOUNCE: 1000,
     AI_MAX_FREE: 10,
     AD_COOLDOWN_MS: 90 * 1000,
-    SANDBOX: 'allow-scripts allow-forms allow-popups allow-modals',
     KEYS: {
         DRAFTS: 'wrenna_drafts',
         ACTIVE: 'wrenna_active_draft',
@@ -45,9 +47,6 @@ const CONFIG = {
         AI_DATE: 'wrenna_ai_date'
     }
 };
-
-const $ = (id) => document.getElementById(id);
-
 
 // ============================================================
 // UTILITIES
@@ -60,7 +59,6 @@ const Utils = {
             t = setTimeout(() => fn(...args), delay);
         };
     },
-    
     formatBytes(bytes) {
         if (bytes === 0) return '0 B';
         const k = 1024;
@@ -68,7 +66,6 @@ const Utils = {
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
     },
-    
     langFromFilename(filename) {
         const ext = filename.split('.').pop().toLowerCase();
         const map = {
@@ -78,13 +75,11 @@ const Utils = {
         };
         return map[ext] || 'plaintext';
     },
-    
     langLabel(lang) {
         const labels = { html: 'HTML', css: 'CSS', javascript: 'JS', json: 'JSON', markdown: 'MD' };
         return labels[lang] || 'TXT';
     }
 };
-
 
 // ============================================================
 // TOAST
@@ -93,27 +88,21 @@ class Toast {
     constructor() {
         this.container = $('toast-container');
     }
-    
     show(message, type = 'info', duration = 3000) {
+        if (!this.container) return;
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
         toast.textContent = message;
         this.container.appendChild(toast);
-        
         const timer = setTimeout(() => this.close(toast), duration);
-        toast.addEventListener('click', () => {
-            clearTimeout(timer);
-            this.close(toast);
-        });
+        toast.addEventListener('click', () => { clearTimeout(timer); this.close(toast); });
     }
-    
     close(toast) {
         if (toast.classList.contains('closing')) return;
         toast.classList.add('closing');
         toast.addEventListener('animationend', () => toast.remove());
     }
 }
-
 
 // ============================================================
 // STATE
@@ -127,7 +116,6 @@ class State {
         this.openTabs = ['index.html'];
         this.load();
     }
-    
     load() {
         try {
             const raw = localStorage.getItem(CONFIG.KEYS.DRAFTS);
@@ -144,10 +132,7 @@ class State {
                 this.activeFile = active;
                 this.openTabs = [active];
             }
-        } catch (e) {
-            console.warn('Load failed:', e);
-        }
-        
+        } catch (e) { console.warn('Load failed:', e); }
         if (this.files.size === 0) {
             this.files.set('index.html', {
                 content: '<!-- Paste your code here -->\n',
@@ -155,20 +140,15 @@ class State {
             });
         }
     }
-    
     save() {
         try {
             const files = {};
             this.files.forEach((data, name) => { files[name] = data; });
             localStorage.setItem(CONFIG.KEYS.DRAFTS, JSON.stringify({ files }));
             localStorage.setItem(CONFIG.KEYS.ACTIVE, this.activeFile);
-        } catch (e) {
-            console.warn('Save failed:', e);
-        }
+        } catch (e) { console.warn('Save failed:', e); }
     }
-    
     getFile(name) { return this.files.get(name); }
-    
     setFile(name, content) {
         const existing = this.files.get(name) || {};
         this.files.set(name, {
@@ -176,7 +156,6 @@ class State {
             lang: existing.lang || Utils.langFromFilename(name)
         });
     }
-    
     deleteFile(name) {
         this.files.delete(name);
         if (this.activeFile === name) {
@@ -184,14 +163,12 @@ class State {
         }
         this.openTabs = this.openTabs.filter(t => t !== name);
     }
-    
     getAllContent() {
         const out = {};
         this.files.forEach((data, name) => { out[name] = data.content; });
         return out;
     }
 }
-
 
 // ============================================================
 // FILE MANAGER
@@ -204,41 +181,40 @@ class FileManager {
         this.tabsEl = $('tabs');
         this.searchInput = $('file-search');
         this.onFileOpen = null;
-        
         this.bindEvents();
     }
-    
     bindEvents() {
-        $('btn-file-tree').addEventListener('click', () => this.toggleTree());
-        $('btn-file-tree-close').addEventListener('click', () => this.toggleTree(false));
-        $('btn-new-file').addEventListener('click', () => this.createNewFile());
-        $('btn-tab-new').addEventListener('click', () => this.createNewFile());
-        $('btn-open-folder').addEventListener('click', () => this.openLocalFiles());
-        
-        this.searchInput.addEventListener('input', () => this.renderTree());
-        
-        this.tabsEl.addEventListener('click', (e) => {
-            const tab = e.target.closest('.tab');
-            if (!tab) return;
-            const filename = tab.dataset.file;
-            
-            if (e.target.closest('.tab-close')) {
-                this.closeTab(filename);
-            } else {
-                this.openFile(filename);
-            }
-        });
+        safeListen('btn-file-tree', 'click', () => this.toggleTree());
+        safeListen('btn-file-tree-close', 'click', () => this.toggleTree(false));
+        safeListen('btn-new-file', 'click', () => this.createNewFile());
+        safeListen('btn-tab-new', 'click', () => this.createNewFile());
+        safeListen('btn-open-folder', 'click', () => this.openLocalFiles());
+        safeListen('btn-import', 'click', () => this.openLocalFiles());
+        if (this.searchInput) {
+            this.searchInput.addEventListener('input', () => this.renderTree());
+        }
+        if (this.tabsEl) {
+            this.tabsEl.addEventListener('click', (e) => {
+                const tab = e.target.closest('.tab');
+                if (!tab) return;
+                const filename = tab.dataset.file;
+                if (e.target.closest('.tab-close')) {
+                    this.closeTab(filename);
+                } else {
+                    this.openFile(filename);
+                }
+            });
+        }
     }
-    
     toggleTree(force) {
         const tree = $('file-tree');
+        if (!tree) return;
         const isOpen = tree.classList.contains('open');
         const shouldOpen = force !== undefined ? force : !isOpen;
         tree.classList.toggle('open', shouldOpen);
         tree.setAttribute('aria-hidden', String(!shouldOpen));
         if (shouldOpen) this.renderTree();
     }
-    
     createNewFile() {
         const name = prompt('File name (e.g., style.css, app.js):');
         if (!name || !name.includes('.')) {
@@ -249,7 +225,6 @@ class FileManager {
             this.toast.show(`"${name}" already exists`, 'error');
             return;
         }
-        
         this.state.setFile(name, '');
         this.state.openTabs.push(name);
         this.state.activeFile = name;
@@ -259,13 +234,11 @@ class FileManager {
         if (this.onFileOpen) this.onFileOpen(name);
         this.toast.show(`Created ${name}`, 'success');
     }
-    
     openLocalFiles() {
         const input = document.createElement('input');
         input.type = 'file';
         input.multiple = true;
         input.accept = '.html,.htm,.css,.js,.mjs,.jsx,.json,.md,.txt';
-        
         input.onchange = (e) => {
             const files = Array.from(e.target.files);
             files.forEach(file => {
@@ -281,10 +254,8 @@ class FileManager {
             });
             if (files.length) this.toast.show(`Imported ${files.length} file(s)`, 'success');
         };
-        
         input.click();
     }
-    
     openFile(name) {
         if (!this.state.files.has(name)) return;
         this.state.activeFile = name;
@@ -296,28 +267,22 @@ class FileManager {
         this.renderTabs();
         if (this.onFileOpen) this.onFileOpen(name);
     }
-    
     closeTab(name) {
         if (this.state.openTabs.length <= 1) return;
-        
         this.state.openTabs = this.state.openTabs.filter(t => t !== name);
-        
         if (this.state.activeFile === name) {
             this.state.activeFile = this.state.openTabs[0];
             if (this.onFileOpen) this.onFileOpen(this.state.activeFile);
         }
-        
         this.state.save();
         this.renderTabs();
     }
-    
     renderTree() {
-        const query = this.searchInput.value.toLowerCase();
+        if (!this.treeBody) return;
+        const query = this.searchInput ? this.searchInput.value.toLowerCase() : '';
         this.treeBody.innerHTML = '';
-        
         this.state.files.forEach((data, name) => {
             if (query && !name.toLowerCase().includes(query)) return;
-            
             const item = document.createElement('div');
             item.className = `file-item ${name === this.state.activeFile ? 'active' : ''}`;
             item.textContent = name;
@@ -328,13 +293,11 @@ class FileManager {
             this.treeBody.appendChild(item);
         });
     }
-    
     renderTabs() {
+        if (!this.tabsEl) return;
         this.tabsEl.innerHTML = '';
-        
         this.state.openTabs.forEach(name => {
             if (!this.state.files.has(name)) return;
-            
             const tab = document.createElement('div');
             tab.className = `tab ${name === this.state.activeFile ? 'active' : ''}`;
             tab.dataset.file = name;
@@ -344,9 +307,8 @@ class FileManager {
     }
 }
 
-
 // ============================================================
-// CODEMIRROR MANAGER (FIXED)
+// CODEMIRROR MANAGER
 // ============================================================
 class CodeMirrorManager {
     constructor(state) {
@@ -356,7 +318,6 @@ class CodeMirrorManager {
         this.onContentChange = null;
         this.onRun = null;
     }
-    
     getLangExtension(filename) {
         const lang = Utils.langFromFilename(filename);
         switch (lang) {
@@ -368,19 +329,13 @@ class CodeMirrorManager {
             default: return [];
         }
     }
-    
     init(container) {
         const file = this.state.getFile(this.state.activeFile);
-        
-        // Build ALL extensions upfront — including the update listener
         const extensions = [
             basicSetup,
             keymap.of([{
                 key: 'Mod-Enter',
-                run: () => {
-                    if (this.onRun) this.onRun();
-                    return true;
-                }
+                run: () => { if (this.onRun) this.onRun(); return true; }
             }]),
             this.langCompartment.of(this.getLangExtension(this.state.activeFile)),
             EditorView.lineWrapping,
@@ -393,7 +348,6 @@ class CodeMirrorManager {
                 '.cm-cursor': { borderLeft: '2px solid var(--accent)' },
                 '.cm-selectionBackground': { backgroundColor: 'rgba(232, 115, 74, 0.18)' }
             }),
-            // THE FIX: update listener goes here, in the extensions array
             EditorView.updateListener.of((update) => {
                 if (update.docChanged && this.onContentChange) {
                     this.onContentChange(update.state.doc.toString());
@@ -403,7 +357,6 @@ class CodeMirrorManager {
                 }
             })
         ];
-        
         this.view = new EditorView({
             state: EditorState.create({
                 doc: file ? file.content : '',
@@ -412,59 +365,56 @@ class CodeMirrorManager {
             parent: container
         });
     }
-    
     openFile(filename) {
         const file = this.state.getFile(filename);
-        if (!file) return;
-        
+        if (!file || !this.view) return;
         this.view.dispatch({
             changes: { from: 0, to: this.view.state.doc.length, insert: file.content },
             effects: this.langCompartment.reconfigure(this.getLangExtension(filename))
         });
-        
-        $('editor-welcome').classList.add('hidden');
+        const welcome = $('editor-welcome');
+        if (welcome) welcome.classList.add('hidden');
         this.updateStatus();
         this.updateFileStatus(filename, file.content);
     }
-    
     setContent(content) {
+        if (!this.view) return;
         this.view.dispatch({
             changes: { from: 0, to: this.view.state.doc.length, insert: content }
         });
     }
-    
     getContent() {
-        return this.view.state.doc.toString();
+        return this.view ? this.view.state.doc.toString() : '';
     }
-    
     getSelectedText() {
+        if (!this.view) return '';
         const sel = this.view.state.selection.main;
         if (sel.empty) return '';
         return this.view.state.doc.sliceString(sel.from, sel.to);
     }
-    
     insertAtCursor(text) {
+        if (!this.view) return;
         const sel = this.view.state.selection.main;
         this.view.dispatch({
             changes: { from: sel.from, to: sel.to, insert: text },
             selection: { anchor: sel.from + text.length }
         });
     }
-    
     updateStatus() {
         if (!this.view) return;
         const state = this.view.state;
         const sel = state.selection.main;
         const line = state.doc.lineAt(sel.head);
-        $('status-pos').textContent = `Ln ${line.number}, Col ${sel.head - line.from + 1}`;
+        const posEl = $('status-pos');
+        if (posEl) posEl.textContent = `Ln ${line.number}, Col ${sel.head - line.from + 1}`;
     }
-    
     updateFileStatus(filename, content) {
-        $('status-lang').textContent = Utils.langLabel(Utils.langFromFilename(filename));
-        $('status-size').textContent = Utils.formatBytes(new Blob([content]).size);
+        const langEl = $('status-lang');
+        const sizeEl = $('status-size');
+        if (langEl) langEl.textContent = Utils.langLabel(Utils.langFromFilename(filename));
+        if (sizeEl) sizeEl.textContent = Utils.formatBytes(new Blob([content]).size);
     }
 }
-
 
 // ============================================================
 // PREVIEW MANAGER
@@ -485,166 +435,76 @@ class PreviewManager {
         };
         this.isEmpty = true;
         this.onStateChange = null;
-        
         this.bindEvents();
     }
-    
     bindEvents() {
         document.querySelectorAll('.pill-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.setDevice(btn.dataset.device);
             });
         });
-        
-        $('btn-refresh').addEventListener('click', () => {
+        safeListen('btn-refresh', 'click', () => {
             this.render();
             this.toast.show('Preview refreshed', 'info', 1500);
         });
     }
-    
     setDevice(device) {
         this.state.device = device;
         document.body.dataset.device = device;
-        
         document.querySelectorAll('.pill-btn').forEach(btn => {
             const isActive = btn.dataset.device === device;
             btn.classList.toggle('active', isActive);
             btn.setAttribute('aria-selected', String(isActive));
         });
-        
         Object.entries(this.devices).forEach(([name, el]) => {
-            el.classList.toggle('active', name === device);
+            if (el) el.classList.toggle('active', name === device);
         });
-        
         if (!this.isEmpty) this.render();
     }
-    
     buildDocument() {
         const files = this.state.getAllContent();
-        let html = files['index.html'] || '';
-        
+        let doc = files['index.html'] || '';
         let css = '';
+        let js = '';
         Object.entries(files).forEach(([name, content]) => {
             if (name.endsWith('.css')) css += `\n${content}`;
         });
-        
-        let js = '';
         Object.entries(files).forEach(([name, content]) => {
             if (name.endsWith('.js') || name.endsWith('.mjs')) js += `\n${content}`;
         });
-        
-        if (css && html.includes('</head>') && !html.includes('<style>')) {
-            html = html.replace('</head>', `<style>${css}</style></head>`);
+        if (css && doc.includes('</head>')) {
+            doc = doc.replace('</head>', `<style>${css}</style></head>`);
         }
-        
-        if (js && html.includes('</body>') && !html.includes('<script>')) {
-            html = html.replace('</body>', `<script>${js}<\/script></body>`);
+        if (js && doc.includes('</body>')) {
+            doc = doc.replace('</body>', `<script>${js}<\/script></body>`);
         }
-        
-        return html;
+        return doc;
     }
-    
     render() {
         const content = this.buildDocument();
-        
-        // Check if there's actual content (not just comments/whitespace)
         const stripped = content.replace(/<!--[\s\S]*?-->/g, '').trim();
-        
-        if (!stripped || stripped === '') {
+        if (!stripped) {
             this.showEmpty();
             return;
         }
-        
         this.hideEmpty();
-        
         Object.values(this.iframes).forEach(iframe => {
-            iframe.srcdoc = content;
+            if (iframe) iframe.srcdoc = content;
         });
     }
-    
     showEmpty() {
         this.isEmpty = true;
-        $('preview-empty').classList.remove('hidden');
+        const empty = $('preview-empty');
+        if (empty) empty.classList.remove('hidden');
         if (this.onStateChange) this.onStateChange('empty');
     }
-    
     hideEmpty() {
         this.isEmpty = false;
-        $('preview-empty').classList.add('hidden');
+        const empty = $('preview-empty');
+        if (empty) empty.classList.add('hidden');
         if (this.onStateChange) this.onStateChange('active');
     }
 }
-
-
-// ============================================================
-// AD MANAGER
-// ============================================================
-class AdManager {
-    constructor() {
-        this.lastHidden = 0;
-        this.isActive = false;
-        this.video = $('ad-video');
-        this.slot = $('ad-slot');
-        this.retryTimer = null;
-        this.videoSources = []; // Add video URLs here when ready
-        
-        this.bindEvents();
-    }
-    
-    bindEvents() {
-        $('btn-ad-mute').addEventListener('click', () => {
-            this.video.muted = !this.video.muted;
-            const btn = $('btn-ad-mute');
-            const iconOn = btn.querySelector('.icon-sound-on');
-            const iconOff = btn.querySelector('.icon-sound-off');
-            if (iconOn && iconOff) {
-                iconOn.style.display = this.video.muted ? 'none' : 'block';
-                iconOff.style.display = this.video.muted ? 'block' : 'none';
-            }
-        });
-    }
-    
-    onPreviewEmpty() {
-        if (this.videoSources.length === 0) return;
-        
-        const elapsed = Date.now() - this.lastHidden;
-        
-        if (elapsed >= CONFIG.AD_COOLDOWN_MS) {
-            this.show();
-        } else {
-            const wait = CONFIG.AD_COOLDOWN_MS - elapsed;
-            this.retryTimer = setTimeout(() => {
-                if (!this.isActive) this.show();
-            }, wait);
-        }
-    }
-    
-    onPreviewActive() {
-        this.hide();
-        this.lastHidden = Date.now();
-        clearTimeout(this.retryTimer);
-    }
-    
-    show() {
-        if (this.isActive || this.videoSources.length === 0) return;
-        this.isActive = true;
-        
-        const src = this.videoSources[Math.floor(Math.random() * this.videoSources.length)];
-        this.video.src = src;
-        this.video.muted = true;
-        
-        this.slot.classList.add('active');
-        this.video.play().catch(() => {});
-    }
-    
-    hide() {
-        if (!this.isActive) return;
-        this.isActive = false;
-        this.slot.classList.remove('active');
-        this.video.pause();
-    }
-}
-
 
 // ============================================================
 // AI MANAGER
@@ -660,83 +520,73 @@ class AIManager {
         this.promptEl = $('ai-prompt-input');
         this.generateBtn = $('btn-ai-generate');
         this.isGenerating = false;
-        
         this.bindEvents();
         this.updateQuotaDisplay();
     }
-    
     get quota() {
         const today = new Date().toDateString();
         const savedDate = localStorage.getItem(CONFIG.KEYS.AI_DATE);
-        
         if (savedDate !== today) {
             localStorage.setItem(CONFIG.KEYS.AI_DATE, today);
             localStorage.setItem(CONFIG.KEYS.AI_QUOTA, String(CONFIG.AI_MAX_FREE));
             return CONFIG.AI_MAX_FREE;
         }
-        
         return parseInt(localStorage.getItem(CONFIG.KEYS.AI_QUOTA) || '0', 10);
     }
-    
     set quota(value) {
         localStorage.setItem(CONFIG.KEYS.AI_QUOTA, String(value));
         this.updateQuotaDisplay();
     }
-    
     updateQuotaDisplay() {
-        this.quotaEl.textContent = `${this.quota} left today`;
+        if (this.quotaEl) this.quotaEl.textContent = `${this.quota} left today`;
     }
-    
     bindEvents() {
-        $('btn-ai').addEventListener('click', () => this.open());
-        $('btn-ai-close').addEventListener('click', () => this.close());
-        
-        this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) this.close();
-        });
-        
+        safeListen('btn-ai', 'click', () => this.open());
+        safeListen('btn-ai-close', 'click', () => this.close());
+        if (this.modal) {
+            this.modal.addEventListener('click', (e) => {
+                if (e.target === this.modal) this.close();
+            });
+        }
         document.querySelectorAll('.chip').forEach(chip => {
             chip.addEventListener('click', () => {
-                this.promptEl.value = chip.dataset.prompt;
-                this.promptEl.focus();
+                if (this.promptEl) {
+                    this.promptEl.value = chip.dataset.prompt;
+                    this.promptEl.focus();
+                }
             });
         });
-        
-        this.generateBtn.addEventListener('click', () => this.generate());
+        safeListen('btn-ai-generate', 'click', () => this.generate());
     }
-    
     open() {
+        if (!this.modal) return;
         const selected = this.editor.getSelectedText();
-        this.contextEl.textContent = selected || '// Select code for context';
-        
+        if (this.contextEl) this.contextEl.textContent = selected || '// Select code for context';
         this.modal.classList.add('open');
         this.modal.setAttribute('aria-hidden', 'false');
-        this.promptEl.focus();
+        if (this.promptEl) this.promptEl.focus();
     }
-    
     close() {
+        if (!this.modal) return;
         this.modal.classList.remove('open');
         this.modal.setAttribute('aria-hidden', 'true');
     }
-    
     async generate() {
         if (this.isGenerating) return;
-        
-        const prompt = this.promptEl.value.trim();
+        const prompt = this.promptEl ? this.promptEl.value.trim() : '';
         if (!prompt) {
             this.toast.show('Please enter a prompt', 'error');
             return;
         }
-        
         if (this.quota <= 0) {
             this.toast.show('Daily AI limit reached. Upgrade to Pro for unlimited.', 'error');
             return;
         }
-        
         this.isGenerating = true;
-        this.generateBtn.disabled = true;
-        this.generateBtn.textContent = 'Generating...';
-        
+        if (this.generateBtn) {
+            this.generateBtn.disabled = true;
+            this.generateBtn.textContent = 'Generating...';
+        }
         try {
             const response = await fetch('/api/ai', {
                 method: 'POST',
@@ -747,12 +597,9 @@ class AIManager {
                     language: Utils.langFromFilename(this.state.activeFile)
                 })
             });
-            
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            
             const data = await response.json();
             const code = data.response || data.output || data.code || '';
-            
             if (code) {
                 this.editor.insertAtCursor(code);
                 this.quota -= 1;
@@ -763,15 +610,16 @@ class AIManager {
             }
         } catch (err) {
             console.error('AI request failed:', err);
-            this.toast.show('AI unavailable — is /api/ai deployed?', 'error');
+            this.toast.show('AI unavailable — deploy /api/ai function', 'error');
         } finally {
             this.isGenerating = false;
-            this.generateBtn.disabled = false;
-            this.generateBtn.textContent = 'Generate';
+            if (this.generateBtn) {
+                this.generateBtn.disabled = false;
+                this.generateBtn.textContent = 'Generate';
+            }
         }
     }
 }
-
 
 // ============================================================
 // SHARE MANAGER
@@ -783,80 +631,69 @@ class ShareManager {
         this.modal = $('share-modal');
         this.urlInput = $('share-url');
         this.copyBtn = $('btn-copy-link');
-        
         this.bindEvents();
     }
-    
     bindEvents() {
-        $('btn-share').addEventListener('click', () => this.open());
-        $('btn-share-close').addEventListener('click', () => this.close());
-        this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) this.close();
-        });
-        
-        $('btn-generate-link').addEventListener('click', () => this.generate());
-        this.copyBtn.addEventListener('click', () => this.copy());
+        safeListen('btn-share', 'click', () => this.open());
+        safeListen('btn-share-close', 'click', () => this.close());
+        if (this.modal) {
+            this.modal.addEventListener('click', (e) => {
+                if (e.target === this.modal) this.close();
+            });
+        }
+        safeListen('btn-generate-link', 'click', () => this.generate());
+        safeListen('btn-copy-link', 'click', () => this.copy());
     }
-    
     open() {
+        if (!this.modal) return;
         this.modal.classList.add('open');
         this.modal.setAttribute('aria-hidden', 'false');
     }
-    
     close() {
+        if (!this.modal) return;
         this.modal.classList.remove('open');
         this.modal.setAttribute('aria-hidden', 'true');
     }
-    
     generate() {
         try {
             const files = this.state.getAllContent();
             const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(files));
             const url = `${location.origin}${location.pathname}#code=${compressed}`;
-            
-            this.urlInput.value = url;
-            this.copyBtn.disabled = false;
+            if (this.urlInput) this.urlInput.value = url;
+            if (this.copyBtn) this.copyBtn.disabled = false;
             this.toast.show('Share link generated', 'success');
         } catch (err) {
             console.error('Share generation failed:', err);
             this.toast.show('Failed to generate link', 'error');
         }
     }
-    
     async copy() {
-        const url = this.urlInput.value;
+        const url = this.urlInput ? this.urlInput.value : '';
         if (!url) return;
-        
         try {
             await navigator.clipboard.writeText(url);
             this.toast.show('Link copied to clipboard', 'success');
         } catch (err) {
-            this.urlInput.select();
+            if (this.urlInput) this.urlInput.select();
             document.execCommand('copy');
             this.toast.show('Link copied', 'success');
         }
     }
-    
     loadFromHash() {
         const hash = location.hash;
         if (!hash.startsWith('#code=')) return false;
-        
         try {
             const encoded = hash.substring(6);
             const decompressed = LZString.decompressFromEncodedURIComponent(encoded);
             if (!decompressed) return false;
-            
             const files = JSON.parse(decompressed);
-            
             this.state.files.clear();
             Object.entries(files).forEach(([name, content]) => {
                 this.state.setFile(name, content);
             });
-            
             this.state.activeFile = Object.keys(files)[0] || 'index.html';
             this.state.openTabs = [this.state.activeFile];
             this.state.save();
-            
             return true;
         } catch (err) {
             console.warn('Failed to load shared code:', err);
@@ -865,136 +702,62 @@ class ShareManager {
     }
 }
 
-
-// ============================================================
-// GESTURES
-// ============================================================
-class GestureHandler {
-    constructor() {
-        this.startX = 0;
-        this.startY = 0;
-        this.threshold = 60;
-        this.init();
-    }
-    
-    init() {
-        if (!('ontouchstart' in window)) return;
-        
-        const workspace = $('workspace');
-        
-        workspace.addEventListener('touchstart', (e) => {
-            this.startX = e.touches[0].clientX;
-            this.startY = e.touches[0].clientY;
-        }, { passive: true });
-        
-        workspace.addEventListener('touchend', (e) => {
-            const deltaX = e.changedTouches[0].clientX - this.startX;
-            const deltaY = e.changedTouches[0].clientY - this.startY;
-            
-            if (Math.abs(deltaX) > this.threshold && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
-                const body = document.body;
-                body.classList.add('mobile-view');
-                
-                if (deltaX > 0) {
-                    body.classList.add('show-code');
-                    body.classList.remove('show-preview');
-                } else {
-                    body.classList.add('show-preview');
-                    body.classList.remove('show-code');
-                }
-            }
-        }, { passive: true });
-    }
-}
-
-
 // ============================================================
 // BOOTSTRAP
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('🪶 Wrenna booting...');
-    
-    const toast = new Toast();
-    const state = new State();
-    
-    // Check for shared code in URL
-    const share = new ShareManager(state, toast);
-    share.loadFromHash();
-    
-    // File manager
-    const fileManager = new FileManager(state, toast);
-    
-    // Preview manager
-    const preview = new PreviewManager(state, toast);
-    
-    // Ad manager
-    const ads = new AdManager();
-    
-    // Connect preview state to ads
-    preview.onStateChange = (previewState) => {
-        if (previewState === 'empty') {
-            ads.onPreviewEmpty();
-        } else {
-            ads.onPreviewActive();
-        }
-    };
-    
-    // CodeMirror — THE CRITICAL PIECE
+    console.log('🪶 Wrenna v3 booting...');
     try {
+        const toast = new Toast();
+        const state = new State();
+
+        const share = new ShareManager(state, toast);
+        share.loadFromHash();
+
+        const fileManager = new FileManager(state, toast);
+        const preview = new PreviewManager(state, toast);
+
         const editor = new CodeMirrorManager(state);
         editor.init($('editor-container'));
-        
-        // Wire up content changes
+
         const debouncedSave = Utils.debounce(() => state.save(), CONFIG.SAVE_DEBOUNCE);
         const debouncedRender = Utils.debounce(() => {
             if (state.livePreview) preview.render();
         }, CONFIG.LIVE_DEBOUNCE);
-        
+
         editor.onContentChange = (content) => {
             state.setFile(state.activeFile, content);
             editor.updateFileStatus(state.activeFile, content);
             debouncedSave();
             debouncedRender();
         };
-        
-        editor.onRun = () => {
-            preview.render();
-        };
-        
+        editor.onRun = () => preview.render();
         fileManager.onFileOpen = (filename) => {
             editor.openFile(filename);
             if (state.livePreview) preview.render();
         };
-        
-        // AI Manager
+
         const ai = new AIManager(state, toast, editor);
-        
-        // Run button
-        $('btn-run').addEventListener('click', () => {
+
+        safeListen('btn-run', 'click', () => {
             state.setFile(state.activeFile, editor.getContent());
             state.save();
             preview.render();
         });
-        
-        // Live toggle
-        $('btn-live').addEventListener('click', (e) => {
-            state.livePreview = !state.livePreview;
-            const btn = e.currentTarget;
-            btn.classList.toggle('active', state.livePreview);
-            btn.setAttribute('aria-pressed', String(state.livePreview));
-            
-            const liveEl = $('status-live');
-            liveEl.style.opacity = state.livePreview ? '1' : '0.3';
-            
-            toast.show(state.livePreview ? 'Live preview on' : 'Live preview off', 'info', 1500);
-        });
-        
-        // Import button
-        $('btn-import').addEventListener('click', () => {
-            fileManager.openLocalFiles();
-        });
-        
-        // Keyboard shortcut
+
+        // Live toggle — null-safe now
+        const liveBtn = $('btn-live');
+        if (liveBtn) {
+            liveBtn.addEventListener('click', (e) => {
+                state.livePreview = !state.livePreview;
+                liveBtn.classList.toggle('active', state.livePreview);
+                liveBtn.setAttribute('aria-pressed', String(state.livePreview));
+                const liveEl = $('status-live');
+                if (liveEl) liveEl.style.opacity = state.livePreview ? '1' : '0.3';
+                toast.show(state.livePreview ? 'Live preview on' : 'Live preview off', 'info', 1500);
+            });
+        }
+
         document.addEventListener('keydown', (e) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
                 e.preventDefault();
@@ -1003,32 +766,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 preview.render();
             }
         });
-        
-        // Open initial file
+
         editor.openFile(state.activeFile);
         preview.render();
-        
-        // Gestures
-        new GestureHandler();
-        
-        // Debug handle
-        window.Wrenna = { state, editor, preview, toast, fileManager, ai, share, ads };
-        
-        console.log('✅ Wrenna ready');
-        
+
+        console.log('✅ Wrenna v3 ready');
+        window.Wrenna = { state, editor, preview, toast, fileManager, ai, share };
+
     } catch (err) {
         console.error('❌ Wrenna failed to initialize:', err);
-        
-        // Show a visible error in the UI
         const container = $('editor-container');
-        container.innerHTML = `
-            <div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:12px;padding:24px;text-align:center;">
+        if (container) {
+            container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:12px;padding:24px;text-align:center;font-family:sans-serif;">
                 <p style="color:#e8734a;font-weight:600;">Editor failed to load</p>
                 <p style="color:rgba(242,234,217,0.5);font-size:0.85rem;">${err.message}</p>
-                <p style="color:rgba(242,234,217,0.3);font-size:0.75rem;">
-                    Make sure you're serving via HTTP (not file://) and your internet connection allows esm.sh CDN access.
-                </p>
-            </div>
-        `;
+            </div>`;
+        }
     }
 });
