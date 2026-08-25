@@ -1,6 +1,7 @@
 /**
- * WRENNA — app.js
- * Complete editor logic in one file.
+ * WRENNA — app.js (FIXED)
+ * The bug: EditorState.appendConfig.of() was invalid.
+ * The fix: include updateListener in initial extensions.
  */
 
 // ============================================================
@@ -9,13 +10,23 @@
 import { EditorView, basicSetup } from 'https://esm.sh/codemirror';
 import { EditorState, Compartment } from 'https://esm.sh/@codemirror/state';
 import { keymap } from 'https://esm.sh/@codemirror/view';
-import { javascript } from 'https://esm.sh/@codemirror/lang-javascript';
 import { html } from 'https://esm.sh/@codemirror/lang-html';
 import { css as cssLang } from 'https://esm.sh/@codemirror/lang-css';
+import { javascript } from 'https://esm.sh/@codemirror/lang-javascript';
 import { json as jsonLang } from 'https://esm.sh/@codemirror/lang-json';
 import { markdown as mdLang } from 'https://esm.sh/@codemirror/lang-markdown';
 
 import LZString from 'https://esm.sh/lz-string@1.5.0';
+
+// Warn if opened via file:// (ES modules won't load)
+if (location.protocol === 'file:') {
+    console.warn(
+        '%c⚠ Wrenna requires an HTTP server.',
+        'font-size:14px;color:#e8734a;font-weight:bold;'
+    );
+    console.warn('ES modules are blocked by CORS on file:// protocol.');
+    console.warn('Run: npx serve .   or   python -m http.server 8000');
+}
 
 
 // ============================================================
@@ -173,11 +184,17 @@ class State {
         }
         this.openTabs = this.openTabs.filter(t => t !== name);
     }
+    
+    getAllContent() {
+        const out = {};
+        this.files.forEach((data, name) => { out[name] = data.content; });
+        return out;
+    }
 }
 
 
 // ============================================================
-// FILE MANAGER (Tree + Tabs)
+// FILE MANAGER
 // ============================================================
 class FileManager {
     constructor(state, toast) {
@@ -200,7 +217,6 @@ class FileManager {
         
         this.searchInput.addEventListener('input', () => this.renderTree());
         
-        // Tab clicks (event delegation)
         this.tabsEl.addEventListener('click', (e) => {
             const tab = e.target.closest('.tab');
             if (!tab) return;
@@ -260,9 +276,6 @@ class FileManager {
                     this.state.save();
                     this.renderTree();
                     this.renderTabs();
-                    if (this.state.activeFile === file.name && this.onFileOpen) {
-                        this.onFileOpen(file.name);
-                    }
                 };
                 reader.readAsText(file);
             });
@@ -285,7 +298,7 @@ class FileManager {
     }
     
     closeTab(name) {
-        if (this.state.openTabs.length <= 1) return; // Keep at least one tab
+        if (this.state.openTabs.length <= 1) return;
         
         this.state.openTabs = this.state.openTabs.filter(t => t !== name);
         
@@ -333,7 +346,7 @@ class FileManager {
 
 
 // ============================================================
-// CODEMIRROR MANAGER
+// CODEMIRROR MANAGER (FIXED)
 // ============================================================
 class CodeMirrorManager {
     constructor(state) {
@@ -342,55 +355,6 @@ class CodeMirrorManager {
         this.langCompartment = new Compartment();
         this.onContentChange = null;
         this.onRun = null;
-    }
-    
-    init(container) {
-        const file = this.state.getFile(this.state.activeFile);
-        
-        this.view = new EditorView({
-            state: EditorState.create({
-                doc: file ? file.content : '',
-                extensions: [
-                    basicSetup,
-                    keymap.of([{
-                        key: 'Mod-Enter',
-                        run: () => {
-                            if (this.onRun) this.onRun();
-                            return true;
-                        }
-                    }]),
-                    this.langCompartment.of(this.getLangExtension(this.state.activeFile)),
-                    EditorView.lineWrapping,
-                    EditorView.theme({
-                        '&': { backgroundColor: 'var(--bg-0)', color: 'var(--fg-0)' },
-                        '.cm-content': { caretColor: 'var(--accent)' },
-                        '.cm-gutters': { backgroundColor: 'var(--bg-0)', color: 'var(--fg-3)', border: 'none' },
-                        '.cm-activeLine': { backgroundColor: 'var(--bg-1)' },
-                        '.cm-activeLineGutter': { backgroundColor: 'var(--bg-1)', color: 'var(--fg-1)' },
-                        '.cm-cursor': { borderLeft: '2px solid var(--accent)' },
-                        '.cm-selectionBackground': { backgroundColor: 'rgba(232, 115, 74, 0.18)' }
-                    })
-                ]
-            }),
-            parent: container
-        });
-        
-        // Track cursor position
-        this.view.dom.addEventListener('click', () => this.updateStatus());
-        
-        // Track content changes
-        const updateListener = EditorView.updateListener.of((update) => {
-            if (update.docChanged && this.onContentChange) {
-                this.onContentChange(update.state.doc.toString());
-            }
-            if (update.selectionSet || update.docChanged) {
-                this.updateStatus();
-            }
-        });
-        // Note: updateListener needs to be in extensions; reconfigure
-        this.view.dispatch({
-            effects: EditorState.appendConfig.of(updateListener)
-        });
     }
     
     getLangExtension(filename) {
@@ -405,6 +369,50 @@ class CodeMirrorManager {
         }
     }
     
+    init(container) {
+        const file = this.state.getFile(this.state.activeFile);
+        
+        // Build ALL extensions upfront — including the update listener
+        const extensions = [
+            basicSetup,
+            keymap.of([{
+                key: 'Mod-Enter',
+                run: () => {
+                    if (this.onRun) this.onRun();
+                    return true;
+                }
+            }]),
+            this.langCompartment.of(this.getLangExtension(this.state.activeFile)),
+            EditorView.lineWrapping,
+            EditorView.theme({
+                '&': { backgroundColor: 'var(--bg-0)', color: 'var(--fg-0)' },
+                '.cm-content': { caretColor: 'var(--accent)' },
+                '.cm-gutters': { backgroundColor: 'var(--bg-0)', color: 'var(--fg-3)', border: 'none' },
+                '.cm-activeLine': { backgroundColor: 'var(--bg-1)' },
+                '.cm-activeLineGutter': { backgroundColor: 'var(--bg-1)', color: 'var(--fg-1)' },
+                '.cm-cursor': { borderLeft: '2px solid var(--accent)' },
+                '.cm-selectionBackground': { backgroundColor: 'rgba(232, 115, 74, 0.18)' }
+            }),
+            // THE FIX: update listener goes here, in the extensions array
+            EditorView.updateListener.of((update) => {
+                if (update.docChanged && this.onContentChange) {
+                    this.onContentChange(update.state.doc.toString());
+                }
+                if (update.selectionSet || update.docChanged) {
+                    this.updateStatus();
+                }
+            })
+        ];
+        
+        this.view = new EditorView({
+            state: EditorState.create({
+                doc: file ? file.content : '',
+                extensions: extensions
+            }),
+            parent: container
+        });
+    }
+    
     openFile(filename) {
         const file = this.state.getFile(filename);
         if (!file) return;
@@ -414,7 +422,6 @@ class CodeMirrorManager {
             effects: this.langCompartment.reconfigure(this.getLangExtension(filename))
         });
         
-        // Hide welcome overlay
         $('editor-welcome').classList.add('hidden');
         this.updateStatus();
         this.updateFileStatus(filename, file.content);
@@ -445,6 +452,7 @@ class CodeMirrorManager {
     }
     
     updateStatus() {
+        if (!this.view) return;
         const state = this.view.state;
         const sel = state.selection.main;
         const line = state.doc.lineAt(sel.head);
@@ -482,14 +490,12 @@ class PreviewManager {
     }
     
     bindEvents() {
-        // Device pill selector
         document.querySelectorAll('.pill-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.setDevice(btn.dataset.device);
             });
         });
         
-        // Refresh
         $('btn-refresh').addEventListener('click', () => {
             this.render();
             this.toast.show('Preview refreshed', 'info', 1500);
@@ -500,46 +506,39 @@ class PreviewManager {
         this.state.device = device;
         document.body.dataset.device = device;
         
-        // Update pill buttons
         document.querySelectorAll('.pill-btn').forEach(btn => {
             const isActive = btn.dataset.device === device;
             btn.classList.toggle('active', isActive);
             btn.setAttribute('aria-selected', String(isActive));
         });
         
-        // Update device frames
         Object.entries(this.devices).forEach(([name, el]) => {
             el.classList.toggle('active', name === device);
         });
         
-        // Re-render preview into new device
         if (!this.isEmpty) this.render();
     }
     
-    // Build combined HTML from all files
     buildDocument() {
         const files = this.state.getAllContent();
-        
         let html = files['index.html'] || '';
         
-        // Inject CSS files
         let css = '';
         Object.entries(files).forEach(([name, content]) => {
             if (name.endsWith('.css')) css += `\n${content}`;
         });
         
-        // Inject JS files
         let js = '';
         Object.entries(files).forEach(([name, content]) => {
             if (name.endsWith('.js') || name.endsWith('.mjs')) js += `\n${content}`;
         });
         
-        if (css && !html.includes('<style>')) {
+        if (css && html.includes('</head>') && !html.includes('<style>')) {
             html = html.replace('</head>', `<style>${css}</style></head>`);
         }
         
-        if (js && !html.includes('<script>')) {
-            html = html.replace('</body>', `<script>${js}</script></body>`);
+        if (js && html.includes('</body>') && !html.includes('<script>')) {
+            html = html.replace('</body>', `<script>${js}<\/script></body>`);
         }
         
         return html;
@@ -548,14 +547,16 @@ class PreviewManager {
     render() {
         const content = this.buildDocument();
         
-        if (!content.trim() || content.trim() === '<!-- Paste your code here -->') {
+        // Check if there's actual content (not just comments/whitespace)
+        const stripped = content.replace(/<!--[\s\S]*?-->/g, '').trim();
+        
+        if (!stripped || stripped === '') {
             this.showEmpty();
             return;
         }
         
         this.hideEmpty();
         
-        // Write to ALL device iframes (so switching is instant)
         Object.values(this.iframes).forEach(iframe => {
             iframe.srcdoc = content;
         });
@@ -585,9 +586,7 @@ class AdManager {
         this.video = $('ad-video');
         this.slot = $('ad-slot');
         this.retryTimer = null;
-        
-        // Placeholder video source (replace with real ad network later)
-        this.videoSources = [];
+        this.videoSources = []; // Add video URLs here when ready
         
         this.bindEvents();
     }
@@ -606,7 +605,7 @@ class AdManager {
     }
     
     onPreviewEmpty() {
-        if (this.videoSources.length === 0) return; // No ads configured yet
+        if (this.videoSources.length === 0) return;
         
         const elapsed = Date.now() - this.lastHidden;
         
@@ -628,16 +627,14 @@ class AdManager {
     
     show() {
         if (this.isActive || this.videoSources.length === 0) return;
-        
         this.isActive = true;
         
-        // Pick random video
         const src = this.videoSources[Math.floor(Math.random() * this.videoSources.length)];
         this.video.src = src;
         this.video.muted = true;
         
         this.slot.classList.add('active');
-        this.video.play().catch(() => {/* autoplay might fail, that's ok */});
+        this.video.play().catch(() => {});
     }
     
     hide() {
@@ -698,7 +695,6 @@ class AIManager {
             if (e.target === this.modal) this.close();
         });
         
-        // Suggestion chips
         document.querySelectorAll('.chip').forEach(chip => {
             chip.addEventListener('click', () => {
                 this.promptEl.value = chip.dataset.prompt;
@@ -710,7 +706,6 @@ class AIManager {
     }
     
     open() {
-        // Grab selected code as context
         const selected = this.editor.getSelectedText();
         this.contextEl.textContent = selected || '// Select code for context';
         
@@ -738,19 +733,17 @@ class AIManager {
             return;
         }
         
-        const context = this.editor.getSelectedText();
-        
         this.isGenerating = true;
         this.generateBtn.disabled = true;
         this.generateBtn.textContent = 'Generating...';
         
         try {
-            const response = await fetch(CONFIG.API.AI || '/api/ai', {
+            const response = await fetch('/api/ai', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     prompt,
-                    context,
+                    context: this.editor.getSelectedText(),
                     language: Utils.langFromFilename(this.state.activeFile)
                 })
             });
@@ -770,7 +763,7 @@ class AIManager {
             }
         } catch (err) {
             console.error('AI request failed:', err);
-            this.toast.show('AI request failed — check if /api/ai is deployed', 'error');
+            this.toast.show('AI unavailable — is /api/ai deployed?', 'error');
         } finally {
             this.isGenerating = false;
             this.generateBtn.disabled = false;
@@ -826,7 +819,7 @@ class ShareManager {
             this.toast.show('Share link generated', 'success');
         } catch (err) {
             console.error('Share generation failed:', err);
-            this.toast.show('Failed to generate link (project too large?)', 'error');
+            this.toast.show('Failed to generate link', 'error');
         }
     }
     
@@ -838,14 +831,12 @@ class ShareManager {
             await navigator.clipboard.writeText(url);
             this.toast.show('Link copied to clipboard', 'success');
         } catch (err) {
-            // Fallback for older browsers
             this.urlInput.select();
             document.execCommand('copy');
             this.toast.show('Link copied', 'success');
         }
     }
     
-    // Load from URL hash if present
     loadFromHash() {
         const hash = location.hash;
         if (!hash.startsWith('#code=')) return false;
@@ -857,7 +848,6 @@ class ShareManager {
             
             const files = JSON.parse(decompressed);
             
-            // Load into state
             this.state.files.clear();
             Object.entries(files).forEach(([name, content]) => {
                 this.state.setFile(name, content);
@@ -877,7 +867,7 @@ class ShareManager {
 
 
 // ============================================================
-// GESTURES (Mobile swipe)
+// GESTURES
 // ============================================================
 class GestureHandler {
     constructor() {
@@ -901,36 +891,19 @@ class GestureHandler {
             const deltaX = e.changedTouches[0].clientX - this.startX;
             const deltaY = e.changedTouches[0].clientY - this.startY;
             
-            // Horizontal swipe only
             if (Math.abs(deltaX) > this.threshold && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) {
                 const body = document.body;
                 body.classList.add('mobile-view');
                 
                 if (deltaX > 0) {
-                    // Swipe right → show code
                     body.classList.add('show-code');
                     body.classList.remove('show-preview');
                 } else {
-                    // Swipe left → show preview
                     body.classList.add('show-preview');
                     body.classList.remove('show-code');
                 }
             }
         }, { passive: true });
-        
-        // Show hint on first mobile visit
-        this.showHintOnce();
-    }
-    
-    showHintOnce() {
-        if (!localStorage.getItem('wrenna_gesture_seen')) {
-            const hint = $('gesture-hint');
-            setTimeout(() => {
-                hint.classList.add('show');
-                setTimeout(() => hint.classList.remove('show'), 3000);
-                localStorage.setItem('wrenna_gesture_seen', '1');
-            }, 1500);
-        }
     }
 }
 
@@ -939,13 +912,14 @@ class GestureHandler {
 // BOOTSTRAP
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
-    // Core instances
+    console.log('🪶 Wrenna booting...');
+    
     const toast = new Toast();
     const state = new State();
     
     // Check for shared code in URL
     const share = new ShareManager(state, toast);
-    const loadedFromHash = share.loadFromHash();
+    share.loadFromHash();
     
     // File manager
     const fileManager = new FileManager(state, toast);
@@ -965,91 +939,96 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     
-    // CodeMirror
-    const editor = new CodeMirrorManager(state);
-    editor.init($('editor-container'));
-    
-    // Editor content change handler (debounced)
-    const debouncedSave = Utils.debounce(() => {
-        state.save();
-    }, CONFIG.SAVE_DEBOUNCE);
-    
-    const debouncedRender = Utils.debounce(() => {
-        if (state.livePreview) preview.render();
-    }, CONFIG.LIVE_DEBOUNCE);
-    
-    editor.onContentChange = (content) => {
-        state.setFile(state.activeFile, content);
-        editor.updateFileStatus(state.activeFile, content);
-        debouncedSave();
-        debouncedRender();
-    };
-    
-    // Run handler
-    editor.onRun = () => {
-        preview.render();
-    };
-    
-    // File open handler
-    editor.onFileOpen = null; // Set below via fileManager
-    
-    fileManager.onFileOpen = (filename) => {
-        editor.openFile(filename);
-        if (state.livePreview) preview.render();
-    };
-    
-    // Wire up fileManager to existing state
-    fileManager.renderTree();
-    fileManager.renderTabs();
-    
-    // AI Manager
-    const ai = new AIManager(state, toast, editor);
-    
-    // Run button
-    $('btn-run').addEventListener('click', () => {
-        // Save current editor content first
-        state.setFile(state.activeFile, editor.getContent());
-        state.save();
-        preview.render();
-    });
-    
-    // Live toggle
-    $('btn-live').addEventListener('click', (e) => {
-        state.livePreview = !state.livePreview;
-        const btn = e.currentTarget;
-        btn.classList.toggle('active', state.livePreview);
-        btn.setAttribute('aria-pressed', String(state.livePreview));
+    // CodeMirror — THE CRITICAL PIECE
+    try {
+        const editor = new CodeMirrorManager(state);
+        editor.init($('editor-container'));
         
-        const liveEl = $('status-live');
-        liveEl.style.opacity = state.livePreview ? '1' : '0.3';
+        // Wire up content changes
+        const debouncedSave = Utils.debounce(() => state.save(), CONFIG.SAVE_DEBOUNCE);
+        const debouncedRender = Utils.debounce(() => {
+            if (state.livePreview) preview.render();
+        }, CONFIG.LIVE_DEBOUNCE);
         
-        toast.show(state.livePreview ? 'Live preview on' : 'Live preview off', 'info', 1500);
-    });
-    
-    // Import button
-    $('btn-import').addEventListener('click', () => {
-        fileManager.openLocalFiles();
-    });
-    
-    // Open initial file
-    editor.openFile(state.activeFile);
-    
-    // Initial preview render
-    preview.render();
-    
-    // Gestures
-    new GestureHandler();
-    
-    // Keyboard shortcut: Ctrl+Enter anywhere
-    document.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-            e.preventDefault();
+        editor.onContentChange = (content) => {
+            state.setFile(state.activeFile, content);
+            editor.updateFileStatus(state.activeFile, content);
+            debouncedSave();
+            debouncedRender();
+        };
+        
+        editor.onRun = () => {
+            preview.render();
+        };
+        
+        fileManager.onFileOpen = (filename) => {
+            editor.openFile(filename);
+            if (state.livePreview) preview.render();
+        };
+        
+        // AI Manager
+        const ai = new AIManager(state, toast, editor);
+        
+        // Run button
+        $('btn-run').addEventListener('click', () => {
             state.setFile(state.activeFile, editor.getContent());
             state.save();
             preview.render();
-        }
-    });
-    
-    // Expose for debugging
-    window.Wrenna = { state, editor, preview, toast, fileManager, ai, share, ads };
+        });
+        
+        // Live toggle
+        $('btn-live').addEventListener('click', (e) => {
+            state.livePreview = !state.livePreview;
+            const btn = e.currentTarget;
+            btn.classList.toggle('active', state.livePreview);
+            btn.setAttribute('aria-pressed', String(state.livePreview));
+            
+            const liveEl = $('status-live');
+            liveEl.style.opacity = state.livePreview ? '1' : '0.3';
+            
+            toast.show(state.livePreview ? 'Live preview on' : 'Live preview off', 'info', 1500);
+        });
+        
+        // Import button
+        $('btn-import').addEventListener('click', () => {
+            fileManager.openLocalFiles();
+        });
+        
+        // Keyboard shortcut
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                state.setFile(state.activeFile, editor.getContent());
+                state.save();
+                preview.render();
+            }
+        });
+        
+        // Open initial file
+        editor.openFile(state.activeFile);
+        preview.render();
+        
+        // Gestures
+        new GestureHandler();
+        
+        // Debug handle
+        window.Wrenna = { state, editor, preview, toast, fileManager, ai, share, ads };
+        
+        console.log('✅ Wrenna ready');
+        
+    } catch (err) {
+        console.error('❌ Wrenna failed to initialize:', err);
+        
+        // Show a visible error in the UI
+        const container = $('editor-container');
+        container.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:12px;padding:24px;text-align:center;">
+                <p style="color:#e8734a;font-weight:600;">Editor failed to load</p>
+                <p style="color:rgba(242,234,217,0.5);font-size:0.85rem;">${err.message}</p>
+                <p style="color:rgba(242,234,217,0.3);font-size:0.75rem;">
+                    Make sure you're serving via HTTP (not file://) and your internet connection allows esm.sh CDN access.
+                </p>
+            </div>
+        `;
+    }
 });
