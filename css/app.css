@@ -273,12 +273,15 @@ kbd {
 
 /* Mobile */
 .device-mobile {
-    width: min(100%, calc((100dvh - var(--sponsor-h) - 100px) * 0.4615));
-    aspect-ratio: 9 / 19.5; max-height: 100%;
-    background: var(--bg-0); border: 3px solid var(--bg-4);
+    width: min(100%, 340px);
+    aspect-ratio: 9 / 19.5;
+    max-height: min(100%, 720px);
+    background: var(--bg-0);
+    border: 3px solid var(--bg-4);
     border-radius: var(--r-2xl);
     box-shadow: var(--sh-xl), inset 0 1px 0 rgba(255,255,255,0.05);
     overflow: hidden;
+    flex-shrink: 1;
 }
 
 .phone-status-bar {
