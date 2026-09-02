@@ -15,12 +15,12 @@ import {
 // FIREBASE CONFIG — paste your values from Project Settings
 // ============================================================
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",                // ← paste yours
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyDuRy_cJ1jeoNLTAmR4kvc5iSdb1sQDn1c",
+  authDomain: "wrenna-8a6a5.firebaseapp.com",
+  projectId: "wrenna-8a6a5",
+  storageBucket: "wrenna-8a6a5.firebasestorage.app",
+  messagingSenderId: "903019555103",
+  appId: "1:903019555103:web:f711379dae86314a2b282a"
 };
 
 const app = initializeApp(firebaseConfig);
